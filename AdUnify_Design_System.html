@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AdUnify — Design System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ivory:#FBF8F2;
+    --card:#FFFFFF;
+    --ink:#221A10;
+    --ink-soft:#5B5044;
+    --gold:#B8892B;
+    --gold-light:#D9B96A;
+    --gold-pale:#F1E4C4;
+    --burgundy:#6E2A32;
+    --emerald:#1F4B3F;
+    --stone:#E3DACB;
+    --stone-dark:#A79A82;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--ivory);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    font-feature-settings:"tnum" 1;
+  }
+  h1,h2,h3,.serif{ font-family:'Fraunces',serif; font-weight:500; letter-spacing:-0.01em;}
+  .wrap{max-width:1180px;margin:0 auto;padding:64px 40px 120px;}
+
+  /* ---- Intro ---- */
+  .intro-eyebrow{ font-size:14px; color:var(--gold); font-weight:600; margin-bottom:10px;}
+  .intro h1{ font-size:48px; line-height:1.08; margin:0 0 18px; max-width:720px;}
+  .intro p{ font-size:17px; line-height:1.6; color:var(--ink-soft); max-width:640px; margin:0;}
+  section{ margin-top:96px; }
+  .section-head{ display:flex; align-items:baseline; justify-content:space-between; border-bottom:1px solid var(--stone); padding-bottom:16px; margin-bottom:32px;}
+  .section-head h2{ font-size:28px; margin:0; }
+  .section-head span{ font-size:14px; color:var(--stone-dark); }
+
+  /* ---- Palette ---- */
+  .palette{ display:grid; grid-template-columns:repeat(6,1fr); gap:16px; }
+  .swatch{ border:1px solid var(--stone); background:var(--card); }
+  .swatch .fill{ height:96px; }
+  .swatch .meta{ padding:14px 14px 16px; }
+  .swatch .meta .name{ font-size:14px; font-weight:600; margin-bottom:3px;}
+  .swatch .meta .hex{ font-size:13px; color:var(--ink-soft); }
+  .swatch .meta .use{ font-size:12px; color:var(--stone-dark); margin-top:6px; line-height:1.4;}
+
+  /* ---- Type ---- */
+  .type-row{ display:flex; gap:64px; padding:28px 0; border-bottom:1px solid var(--stone); align-items:baseline;}
+  .type-row:last-child{border-bottom:none;}
+  .type-label{ width:170px; flex-shrink:0; font-size:13px; color:var(--stone-dark); }
+  .display-xl{ font-size:56px; font-weight:500; }
+  .display-l{ font-size:36px; font-weight:500; }
+  .display-italic{ font-size:26px; font-style:italic; font-weight:500; }
+  .body-l{ font-family:'Inter'; font-size:18px; color:var(--ink-soft); font-weight:400; }
+  .data-num{ font-family:'Inter'; font-size:40px; font-weight:600; letter-spacing:-0.02em;}
+  .label-sm{ font-family:'Inter'; font-size:13px; font-weight:600; color:var(--ink-soft); }
+
+  /* ---- Chart legend key ---- */
+  .legend-key{ display:flex; gap:28px; flex-wrap:wrap; margin-bottom:8px;}
+  .legend-item{ display:flex; align-items:center; gap:9px; font-size:14px; color:var(--ink-soft);}
+  .dot{ width:10px; height:10px; border-radius:50%; display:inline-block;}
+
+  /* ---- Dashboard mockup ---- */
+  .mock{ display:flex; border:1px solid var(--stone); background:var(--card); }
+  .mock-sidebar{ width:220px; background:var(--ink); color:#EFE6D4; padding:28px 22px; flex-shrink:0;}
+  .mock-logo{ font-family:'Fraunces'; font-size:20px; font-weight:500; color:#fff; margin-bottom:36px;}
+  .mock-logo .dot-g{color:var(--gold-light);}
+  .mock-nav a{ display:block; font-size:14px; color:#C9BEA8; text-decoration:none; padding:10px 0; }
+  .mock-nav a.active{ color:#fff; font-weight:600; border-left:2px solid var(--gold-light); padding-left:12px; margin-left:-14px;}
+  .mock-main{ flex:1; padding:36px 40px; min-width:0;}
+  .mock-topbar{ display:flex; justify-content:space-between; align-items:center; margin-bottom:28px;}
+  .mock-topbar h3{ font-size:26px; margin:0; }
+  .range-chip{ font-size:13px; border:1px solid var(--stone); padding:8px 14px; color:var(--ink-soft);}
+
+  .kpi-row{ display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--stone); border:1px solid var(--stone); margin-bottom:32px;}
+  .kpi{ background:var(--card); padding:20px 22px; position:relative;}
+  .kpi .bar{ height:2px; width:32px; margin-bottom:14px;}
+  .kpi .num{ font-size:28px; font-weight:600; letter-spacing:-0.01em;}
+  .kpi .lbl{ font-size:13px; color:var(--ink-soft); margin-top:4px;}
+  .kpi .delta{ font-size:12px; margin-top:8px; color:var(--emerald); font-weight:600;}
+
+  .grid-2{ display:grid; grid-template-columns:2fr 1fr; gap:1px; background:var(--stone); border:1px solid var(--stone); margin-bottom:1px;}
+  .panel{ background:var(--card); padding:26px 28px;}
+  .panel h4{ font-size:15px; font-weight:600; margin:0 0 4px; font-family:'Inter';}
+  .panel .sub{ font-size:13px; color:var(--stone-dark); margin-bottom:20px;}
+
+  table{ width:100%; border-collapse:collapse; margin-top:4px;}
+  th{ text-align:left; font-size:12px; color:var(--stone-dark); font-weight:600; padding:10px 8px; border-bottom:1px solid var(--stone);}
+  td{ font-size:14px; padding:13px 8px; border-bottom:1px solid var(--stone); }
+  tr:last-child td{ border-bottom:none; }
+  .tag{ display:inline-block; font-size:11px; font-weight:600; padding:3px 9px; color:#fff; }
+  .status{ display:inline-flex; align-items:center; gap:6px; font-size:13px; color:var(--ink-soft);}
+  .status .d{width:7px;height:7px;border-radius:50%;background:var(--emerald);display:inline-block;}
+
+  footer{ margin-top:100px; padding-top:28px; border-top:1px solid var(--stone); font-size:13px; color:var(--stone-dark); display:flex; justify-content:space-between;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="intro">
+    <div class="intro-eyebrow">Design System · v1.0</div>
+    <h1>AdUnify — a quiet, premium canvas for reading ad performance.</h1>
+    <p>Ivory and card white as the base, aged gold as the single accent that carries meaning, and a small jewel-tone set — burgundy and emerald — reserved for telling platforms apart in charts. No shadows, no gradients, no rounded-card kit: structure comes from hairline rule and a thin colored edge, the way a private ledger separates its sections.</p>
+  </div>
+
+  <!-- PALETTE -->
+  <section>
+    <div class="section-head"><h2>Colour</h2><span>Core tokens</span></div>
+    <div class="palette">
+      <div class="swatch">
+        <div class="fill" style="background:#FBF8F2;"></div>
+        <div class="meta"><div class="name">Ivory</div><div class="hex">#FBF8F2</div><div class="use">Page background</div></div>
+      </div>
+      <div class="swatch">
+        <div class="fill" style="background:#FFFFFF; border-bottom:1px solid #E3DACB;"></div>
+        <div class="meta"><div class="name">Card White</div><div class="hex">#FFFFFF</div><div class="use">Panels, tables</div></div>
+      </div>
+      <div class="swatch">
+        <div class="fill" style="background:#221A10;"></div>
+        <div class="meta"><div class="name">Espresso Ink</div><div class="hex">#221A10</div><div class="use">Text, sidebar</div></div>
+      </div>
+      <div class="swatch">
+        <div class="fill" style="background:#B8892B;"></div>
+        <div class="meta"><div class="name">Antique Gold</div><div class="hex">#B8892B</div><div class="use">Primary accent, CTA</div></div>
+      </div>
+      <div class="swatch">
+        <div class="fill" style="background:#6E2A32;"></div>
+        <div class="meta"><div class="name">Burgundy</div><div class="hex">#6E2A32</div><div class="use">Meta series</div></div>
+      </div>
+      <div class="swatch">
+        <div class="fill" style="background:#1F4B3F;"></div>
+        <div class="meta"><div class="name">Deep Emerald</div><div class="hex">#1F4B3F</div><div class="use">Amazon series</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TYPE -->
+  <section>
+    <div class="section-head"><h2>Typography</h2><span>Fraunces / Inter</span></div>
+    <div class="type-row"><div class="type-label">Display — Fraunces 500</div><div class="display-xl">Blended ROAS, at a glance</div></div>
+    <div class="type-row"><div class="type-label">Section head — Fraunces 500</div><div class="display-l">Spend & revenue trend</div></div>
+    <div class="type-row"><div class="type-label">Accent — Fraunces italic</div><div class="display-italic">up 12.4% this month</div></div>
+    <div class="type-row"><div class="type-label">Body — Inter 400</div><div class="body-l">Every currency figure below uses tabular numerals so columns of spend and revenue stay aligned as they update.</div></div>
+    <div class="type-row"><div class="type-label">Data figure — Inter 600</div><div class="data-num">₹18.4L</div></div>
+    <div class="type-row"><div class="type-label">Label — Inter 600</div><div class="label-sm">Cost per acquisition</div></div>
+  </section>
+
+  <!-- CHART COLOUR KEY -->
+  <section>
+    <div class="section-head"><h2>Chart colour key</h2><span>Applies across line, bar & donut</span></div>
+    <div class="legend-key">
+      <span class="legend-item"><span class="dot" style="background:#B8892B;"></span>Google Ads</span>
+      <span class="legend-item"><span class="dot" style="background:#6E2A32;"></span>Meta Ads</span>
+      <span class="legend-item"><span class="dot" style="background:#1F4B3F;"></span>Amazon Ads</span>
+      <span class="legend-item"><span class="dot" style="background:#221A10;"></span>Blended total</span>
+    </div>
+  </section>
+
+  <!-- DASHBOARD MOCKUP -->
+  <section>
+    <div class="section-head"><h2>Applied — dashboard mock</h2><span>Overview screen</span></div>
+
+    <div class="mock">
+      <div class="mock-sidebar">
+        <div class="mock-logo">Ad<span class="dot-g">Unify</span></div>
+        <nav class="mock-nav">
+          <a class="active">Overview</a>
+          <a>Campaigns</a>
+          <a>Platforms</a>
+          <a>Attribution</a>
+          <a>Connect & Extensions</a>
+          <a>Settings</a>
+        </nav>
+      </div>
+
+      <div class="mock-main">
+        <div class="mock-topbar">
+          <h3>Overview</h3>
+          <span class="range-chip">Mar 1 – Aug 31, 2026</span>
+        </div>
+
+        <div class="kpi-row">
+          <div class="kpi"><div class="bar" style="background:#221A10;"></div><div class="num">₹1.47Cr</div><div class="lbl">Blended spend</div><div class="delta">+8.2% vs prior period</div></div>
+          <div class="kpi"><div class="bar" style="background:#B8892B;"></div><div class="num">4.6x</div><div class="lbl">Blended ROAS</div><div class="delta">+0.4x vs prior period</div></div>
+          <div class="kpi"><div class="bar" style="background:#6E2A32;"></div><div class="num">₹312</div><div class="lbl">Blended CPA</div><div class="delta">−6.1% vs prior period</div></div>
+          <div class="kpi"><div class="bar" style="background:#1F4B3F;"></div><div class="num">18,940</div><div class="lbl">Conversions</div><div class="delta">+11.8% vs prior period</div></div>
+        </div>
+
+        <div class="grid-2">
+          <!-- LINE CHART -->
+          <div class="panel">
+            <h4>Spend by platform, last 6 months</h4>
+            <div class="sub">Monthly spend, in ₹ lakh</div>
+            <svg viewBox="0 0 620 240" width="100%" height="240">
+              <line x1="40" y1="20" x2="40" y2="200" stroke="#E3DACB"/>
+              <line x1="40" y1="200" x2="600" y2="200" stroke="#E3DACB"/>
+              <text x="20" y="24" font-size="11" fill="#A79A82" font-family="Inter">63</text>
+              <text x="20" y="112" font-size="11" fill="#A79A82" font-family="Inter">30</text>
+              <text x="20" y="204" font-size="11" fill="#A79A82" font-family="Inter">0</text>
+              <!-- Google -->
+              <polyline fill="none" stroke="#B8892B" stroke-width="2.5" points="60,110 150,92 240,100 330,68 420,42 510,20" />
+              <!-- Meta -->
+              <polyline fill="none" stroke="#6E2A32" stroke-width="2.5" points="60,132 150,138 240,116 330,104 420,110 510,80" />
+              <!-- Amazon -->
+              <polyline fill="none" stroke="#1F4B3F" stroke-width="2.5" points="60,168 150,158 240,164 330,148 420,136 510,124" />
+              <g font-family="Inter" font-size="11" fill="#A79A82">
+                <text x="52" y="216">Mar</text><text x="142" y="216">Apr</text><text x="232" y="216">May</text>
+                <text x="322" y="216">Jun</text><text x="412" y="216">Jul</text><text x="500" y="216">Aug</text>
+              </g>
+              <circle cx="510" cy="20" r="3.5" fill="#B8892B"/>
+              <circle cx="510" cy="80" r="3.5" fill="#6E2A32"/>
+              <circle cx="510" cy="124" r="3.5" fill="#1F4B3F"/>
+            </svg>
+          </div>
+
+          <!-- DONUT -->
+          <div class="panel">
+            <h4>Spend distribution</h4>
+            <div class="sub">Share of total, this month</div>
+            <svg viewBox="0 0 200 200" width="100%" height="190">
+              <circle cx="100" cy="100" r="70" fill="none" stroke="#EDE6D8" stroke-width="26"/>
+              <circle cx="100" cy="100" r="70" fill="none" stroke="#B8892B" stroke-width="26"
+                stroke-dasharray="202.9 440" stroke-dashoffset="0" transform="rotate(-90 100 100)"/>
+              <circle cx="100" cy="100" r="70" fill="none" stroke="#6E2A32" stroke-width="26"
+                stroke-dasharray="149.6 440" stroke-dashoffset="-202.9" transform="rotate(-90 100 100)"/>
+              <circle cx="100" cy="100" r="70" fill="none" stroke="#1F4B3F" stroke-width="26"
+                stroke-dasharray="88 440" stroke-dashoffset="-352.5" transform="rotate(-90 100 100)"/>
+              <text x="100" y="96" text-anchor="middle" font-family="Fraunces" font-size="24" fill="#221A10">46%</text>
+              <text x="100" y="115" text-anchor="middle" font-family="Inter" font-size="11" fill="#A79A82">Google share</text>
+            </svg>
+            <div class="legend-key" style="margin-top:6px;">
+              <span class="legend-item"><span class="dot" style="background:#B8892B;"></span>Google 46%</span>
+              <span class="legend-item"><span class="dot" style="background:#6E2A32;"></span>Meta 34%</span>
+              <span class="legend-item"><span class="dot" style="background:#1F4B3F;"></span>Amazon 20%</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" style="border:1px solid var(--stone); border-top:none;">
+          <h4>Cost per acquisition by platform</h4>
+          <div class="sub">₹ per conversion, last 30 days</div>
+          <svg viewBox="0 0 620 150" width="100%" height="150">
+            <line x1="40" y1="120" x2="600" y2="120" stroke="#E3DACB"/>
+            <rect x="90" y="40" width="60" height="80" fill="#B8892B"/>
+            <text x="120" y="134" text-anchor="middle" font-family="Inter" font-size="12" fill="#5B5044">Google</text>
+            <text x="120" y="32" text-anchor="middle" font-family="Inter" font-size="13" font-weight="600" fill="#221A10">₹268</text>
+
+            <rect x="290" y="24" width="60" height="96" fill="#6E2A32"/>
+            <text x="320" y="134" text-anchor="middle" font-family="Inter" font-size="12" fill="#5B5044">Meta</text>
+            <text x="320" y="16" text-anchor="middle" font-family="Inter" font-size="13" font-weight="600" fill="#221A10">₹341</text>
+
+            <rect x="490" y="58" width="60" height="62" fill="#1F4B3F"/>
+            <text x="520" y="134" text-anchor="middle" font-family="Inter" font-size="12" fill="#5B5044">Amazon</text>
+            <text x="520" y="50" text-anchor="middle" font-family="Inter" font-size="13" font-weight="600" fill="#221A10">₹204</text>
+          </svg>
+        </div>
+
+        <div class="panel" style="border:1px solid var(--stone); border-top:none;">
+          <h4>Top campaigns</h4>
+          <table>
+            <thead><tr><th>Campaign</th><th>Platform</th><th>Spend</th><th>ROAS</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>Festive Sale — Search</td>
+                <td><span class="tag" style="background:#B8892B;">Google</span></td>
+                <td>₹4.8L</td><td>5.2x</td>
+                <td class="status"><span class="d"></span>Active</td>
+              </tr>
+              <tr>
+                <td>Retarget — Cart Abandoners</td>
+                <td><span class="tag" style="background:#6E2A32;">Meta</span></td>
+                <td>₹3.1L</td><td>4.1x</td>
+                <td class="status"><span class="d"></span>Active</td>
+              </tr>
+              <tr>
+                <td>Sponsored Products — Core SKUs</td>
+                <td><span class="tag" style="background:#1F4B3F;">Amazon</span></td>
+                <td>₹2.4L</td><td>6.0x</td>
+                <td class="status"><span class="d" style="background:#A79A82;"></span>Paused</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>AdUnify Design System — v1.0</span>
+    <span>Ivory · Gold · Espresso · Burgundy · Emerald</span>
+  </footer>
+</div>
+</body>
+</html>

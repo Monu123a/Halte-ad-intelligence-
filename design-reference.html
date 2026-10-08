@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Halte Ad Intelligence — Premium Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FBF8F2;
+    --card:#FFFFFF;
+    --ink:#221A10;
+    --ink-soft:#6B6152;
+    --gold:#B8892B;
+    --gold-light:#D9B96A;
+    --gold-tint:#F3E9D2;
+    --stone:#E4DAC4;
+    --stone-dark:#A79A82;
+
+    --green:#2F5233;   --green-tint:#E7EFE6;
+    --amber:#B8892B;   --amber-tint:#F3E9D2;
+    --slate:#3B3A36;   --slate-tint:#EAE9E6;
+    --rust:#8C4A34;    --rust-tint:#F1E1D8;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:'Inter',sans-serif;font-feature-settings:"tnum" 1;}
+  .serif{font-family:'Fraunces',serif;font-weight:500;letter-spacing:-0.01em;}
+  a{text-decoration:none;color:inherit;}
+
+  .shell{display:flex;min-height:100vh;}
+
+  /* SIDEBAR */
+  .sidebar{width:240px;flex-shrink:0;background:var(--ink);color:#EFE6D4;padding:32px 24px;position:sticky;top:0;height:100vh;}
+  .logo{font-family:'Fraunces';font-size:20px;font-weight:600;color:#fff;margin-bottom:2px;}
+  .logo span{color:var(--gold-light);}
+  .logo-sub{font-size:11px;color:#B7AD97;margin-bottom:40px;letter-spacing:0.02em;}
+  .nav-item{display:flex;align-items:center;gap:11px;font-size:14px;color:#C9BEA4;padding:12px 4px;cursor:pointer;border-left:2px solid transparent;}
+  .nav-item:hover{color:#fff;}
+  .nav-item.active{color:#fff;font-weight:600;border-left:2px solid var(--gold-light);padding-left:14px;}
+  .nav-dot{width:5px;height:5px;border-radius:50%;background:var(--gold-light);flex-shrink:0;}
+
+  /* MAIN */
+  .main{flex:1;padding:44px 56px;min-width:0;}
+  .page{display:none;}
+  .page.active{display:block;}
+  .topbar{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:32px;border-bottom:1px solid var(--stone);padding-bottom:22px;}
+  .topbar h1{font-family:'Fraunces';font-size:30px;margin:0 0 5px;font-weight:600;}
+  .topbar p{margin:0;font-size:13.5px;color:var(--ink-soft);}
+  .chip{font-size:12.5px;border:1px solid var(--stone);padding:8px 15px;color:var(--ink-soft);background:var(--card);}
+  .brand-tabs{display:flex;gap:10px;margin-bottom:28px;}
+  .brand-tab{font-size:13px;font-weight:600;padding:9px 18px;border:1px solid var(--stone);color:var(--ink-soft);background:var(--card);cursor:pointer;}
+  .brand-tab.g.on{background:var(--green);border-color:var(--green);color:#fff;}
+  .brand-tab.b.on{background:var(--amber);border-color:var(--amber);color:#fff;}
+  .brand-tab.o.on{background:var(--slate);border-color:var(--slate);color:#fff;}
+  .brand-tab.v.on{background:var(--rust);border-color:var(--rust);color:#fff;}
+
+  .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--stone);border:1px solid var(--stone);margin-bottom:28px;}
+  .kpi{background:var(--card);padding:22px 24px;}
+  .kpi .top{height:2px;width:30px;margin-bottom:16px;}
+  .kpi .num{font-family:'Fraunces';font-size:26px;font-weight:600;}
+  .kpi .lbl{font-size:12.5px;color:var(--ink-soft);margin-top:5px;}
+  .kpi .delta{font-size:11.5px;margin-top:10px;font-weight:600;}
+  .up{color:var(--green);} .down{color:var(--rust);}
+
+  .card{background:var(--card);border:1px solid var(--stone);padding:26px 28px;margin-bottom:1px;}
+  .card h3{margin:0 0 4px;font-size:15px;font-weight:700;font-family:'Inter';}
+  .card .sub{font-size:12.5px;color:var(--ink-soft);margin-bottom:18px;}
+
+  table{width:100%;border-collapse:collapse;}
+  th{text-align:left;font-size:11.5px;color:var(--ink-soft);font-weight:600;padding:10px 10px;border-bottom:1px solid var(--stone);}
+  td{font-size:13.5px;padding:13px 10px;border-bottom:1px solid var(--stone);}
+  tr:last-child td{border-bottom:none;}
+  .tag{display:inline-block;font-size:10.5px;font-weight:700;padding:4px 10px;color:#fff;}
+  .rec{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;padding:5px 11px;}
+  .rec.inc{background:var(--green-tint);color:var(--green);}
+  .rec.dec{background:var(--rust-tint);color:var(--rust);}
+  .rec.hold{background:var(--slate-tint);color:var(--slate);}
+
+  .grid2{display:grid;grid-template-columns:1.4fr 1fr;gap:1px;background:var(--stone);border:1px solid var(--stone);margin-bottom:1px;}
+
+  .season-banner{display:flex;gap:16px;align-items:flex-start;background:var(--gold-tint);border:1px solid #e3d3a8;padding:18px 20px;margin-bottom:1px;}
+  .season-banner .ico{width:36px;height:36px;background:var(--gold);flex-shrink:0;}
+  .season-banner b{font-size:14px;}
+  .season-banner p{margin:4px 0 0;font-size:13px;color:var(--ink-soft);}
+
+  /* LEAD TAGGING PAGE */
+  .lead-list{display:flex;flex-direction:column;gap:1px;background:var(--stone);border:1px solid var(--stone);}
+  .lead-item{background:var(--card);padding:18px 22px;display:flex;justify-content:space-between;align-items:center;gap:18px;}
+  .lead-msg{font-size:13.5px;}
+  .lead-msg .from{font-weight:600;margin-right:9px;}
+  .lead-msg .txt{color:var(--ink-soft);}
+  .lead-meta{font-size:11.5px;color:var(--stone-dark);margin-top:5px;}
+  .tagbtns{display:flex;gap:7px;flex-shrink:0;}
+  .tagbtn{font-size:11.5px;font-weight:600;padding:7px 12px;border:1px solid var(--stone);background:#fff;color:var(--ink-soft);cursor:pointer;}
+  .tagbtn.spam.on{background:var(--rust);color:#fff;border-color:var(--rust);}
+  .tagbtn.genuine.on{background:var(--green);color:#fff;border-color:var(--green);}
+  .tagbtn.converted.on{background:var(--green);color:#fff;border-color:var(--green);}
+
+  /* CONNECTIONS PAGE */
+  .conn-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--stone);border:1px solid var(--stone);}
+  .conn-card{background:var(--card);padding:22px;display:flex;justify-content:space-between;align-items:center;}
+  .conn-name{font-family:'Fraunces';font-size:16px;font-weight:600;}
+  .conn-sub{font-size:12px;color:var(--ink-soft);margin-top:4px;}
+  .status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:7px;}
+  .status{font-size:12px;font-weight:600;display:flex;align-items:center;}
+
+  /* LOGIN */
+  .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);}
+  .login-card{width:400px;background:var(--card);border:1px solid var(--stone);padding:48px 42px;}
+  .login-logo{font-family:'Fraunces';font-size:22px;font-weight:600;margin-bottom:5px;}
+  .login-logo span{color:var(--gold);}
+  .login-sub{font-size:13.5px;color:var(--ink-soft);margin-bottom:32px;}
+  .field{margin-bottom:18px;}
+  .field label{font-size:12.5px;font-weight:600;color:var(--ink-soft);display:block;margin-bottom:7px;}
+  .field input{width:100%;padding:12px 13px;border:1px solid var(--stone);font-size:14px;font-family:'Inter';background:var(--bg);}
+  .btn-primary{width:100%;background:var(--ink);color:#fff;border:none;padding:13px;font-size:14px;font-weight:600;margin-top:8px;cursor:pointer;letter-spacing:0.01em;}
+  .btn-primary:hover{background:var(--gold);}
+
+  .legend{display:flex;gap:22px;flex-wrap:wrap;font-size:12.5px;color:var(--ink-soft);margin-top:12px;}
+  .legend span{display:inline-flex;align-items:center;gap:8px;}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
+</style>
+</head>
+<body>
+
+<div class="shell" id="appShell">
+  <div class="sidebar">
+    <div class="logo">Halte <span>Ad Intelligence</span></div>
+    <div class="logo-sub">Internal reporting tool</div>
+    <div class="nav-item active" onclick="showPage('overview', this)"><span class="nav-dot"></span>Overview</div>
+    <div class="nav-item" onclick="showPage('brand', this)"><span class="nav-dot"></span>Brand Report</div>
+    <div class="nav-item" onclick="showPage('leads', this)"><span class="nav-dot"></span>Lead Tagging</div>
+    <div class="nav-item" onclick="showPage('connections', this)"><span class="nav-dot"></span>Connections</div>
+    <div class="nav-item" onclick="showPage('login', this)"><span class="nav-dot"></span>Sign-in Screen</div>
+  </div>
+
+  <div class="main">
+
+    <!-- OVERVIEW -->
+    <div class="page active" id="overview">
+      <div class="topbar">
+        <div><h1>Overview</h1><p>All brands, blended · August 2026</p></div>
+        <div class="chip">Last synced: today, 6:00 AM</div>
+      </div>
+
+      <div class="kpi-row">
+        <div class="kpi"><div class="top" style="background:var(--ink);"></div><div class="num">₹9.8L</div><div class="lbl">Blended spend</div><div class="delta up">+4.1% vs last month</div></div>
+        <div class="kpi"><div class="top" style="background:var(--green);"></div><div class="num">312</div><div class="lbl">Genuine leads</div><div class="delta up">+18% vs last month</div></div>
+        <div class="kpi"><div class="top" style="background:var(--gold);"></div><div class="num">₹314</div><div class="lbl">Cost per genuine lead</div><div class="delta up">−9.2% vs last month</div></div>
+        <div class="kpi"><div class="top" style="background:var(--rust);"></div><div class="num">61%</div><div class="lbl">Leads flagged spam</div><div class="delta down">was 74% last month</div></div>
+      </div>
+
+      <div class="card">
+        <h3>Recommendations this cycle</h3>
+        <div class="sub">Generated from tagged leads + spend, ranked by cost per genuine lead</div>
+        <table>
+          <thead><tr><th>Brand</th><th>Ad set</th><th>Cost / genuine lead</th><th>Spend</th><th>Recommendation</th></tr></thead>
+          <tbody>
+            <tr><td><span class="tag" style="background:var(--green);">Gardena</span></td><td>Sprinklers — Carousel — Messages</td><td>₹186</td><td>₹42,000</td><td><span class="rec inc">Increase budget</span></td></tr>
+            <tr><td><span class="tag" style="background:var(--amber);">BKR</span></td><td>Snow Chains — Static — North region</td><td>₹221</td><td>₹18,500</td><td><span class="rec hold">Hold, seasonal</span></td></tr>
+            <tr><td><span class="tag" style="background:var(--slate);">Gorilla</span></td><td>Mounting Tape — Reel — Broad</td><td>₹298</td><td>₹31,200</td><td><span class="rec hold">Hold</span></td></tr>
+            <tr><td><span class="tag" style="background:var(--rust);">Velcro</span></td><td>Cord Organiser — Static — Profile Visit</td><td>₹612</td><td>₹22,800</td><td><span class="rec dec">Reduce budget</span></td></tr>
+            <tr><td><span class="tag" style="background:var(--amber);">BKR</span></td><td>Fogging Machine — Carousel — East region</td><td>₹204</td><td>₹27,400</td><td><span class="rec inc">Increase budget</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- BRAND REPORT -->
+    <div class="page" id="brand">
+      <div class="topbar">
+        <div><h1>Brand Report</h1><p>Season and region view</p></div>
+        <div class="chip">August 2026</div>
+      </div>
+
+      <div class="brand-tabs">
+        <div class="brand-tab g on">Gardena</div>
+        <div class="brand-tab b">BKR</div>
+        <div class="brand-tab o">Gorilla</div>
+        <div class="brand-tab v">Velcro</div>
+      </div>
+
+      <div class="season-banner">
+        <div class="ico"></div>
+        <div><b>Seasonal note — Sprinklers &amp; Hose Reels</b>
+        <p>Historically strongest in West &amp; South regions from February to May, ahead of summer irrigation demand. Current spend is evenly split nationally — regional reallocation is recommended.</p></div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <h3>Cost per genuine lead by product</h3>
+          <div class="sub">₹ per genuine lead, last 30 days</div>
+          <svg viewBox="0 0 460 160" width="100%" height="160">
+            <line x1="30" y1="130" x2="440" y2="130" stroke="#E4DAC4"/>
+            <rect x="55" y="50" width="50" height="80" fill="#B8892B"/>
+            <text x="80" y="144" text-anchor="middle" font-size="11" fill="#6B6152" font-family="Inter">Sprinklers</text>
+            <text x="80" y="42" text-anchor="middle" font-size="12" font-weight="700" fill="#221A10" font-family="Inter">₹186</text>
+            <rect x="160" y="70" width="50" height="60" fill="#D9B96A"/>
+            <text x="185" y="144" text-anchor="middle" font-size="11" fill="#6B6152" font-family="Inter">Hose Reels</text>
+            <text x="185" y="62" text-anchor="middle" font-size="12" font-weight="700" fill="#221A10" font-family="Inter">₹234</text>
+            <rect x="265" y="30" width="50" height="100" fill="#E7D8AE"/>
+            <text x="290" y="144" text-anchor="middle" font-size="11" fill="#6B6152" font-family="Inter">Hand Tools</text>
+            <text x="290" y="22" text-anchor="middle" font-size="12" font-weight="700" fill="#221A10" font-family="Inter">₹342</text>
+            <rect x="370" y="20" width="50" height="110" fill="#F0E4C6"/>
+            <text x="395" y="144" text-anchor="middle" font-size="11" fill="#6B6152" font-family="Inter">Lawn Mowers</text>
+            <text x="395" y="12" text-anchor="middle" font-size="12" font-weight="700" fill="#221A10" font-family="Inter">₹378</text>
+          </svg>
+        </div>
+        <div class="card">
+          <h3>Spend by region</h3>
+          <div class="sub">Share of Gardena spend, this month</div>
+          <svg viewBox="0 0 180 180" width="100%" height="170">
+            <circle cx="90" cy="90" r="62" fill="none" stroke="#F3E9D2" stroke-width="24"/>
+            <circle cx="90" cy="90" r="62" fill="none" stroke="#B8892B" stroke-width="24" stroke-dasharray="97 390" transform="rotate(-90 90 90)"/>
+            <circle cx="90" cy="90" r="62" fill="none" stroke="#D9B96A" stroke-width="24" stroke-dasharray="97 390" stroke-dashoffset="-97" transform="rotate(-90 90 90)"/>
+            <circle cx="90" cy="90" r="62" fill="none" stroke="#E7D8AE" stroke-width="24" stroke-dasharray="97 390" stroke-dashoffset="-194" transform="rotate(-90 90 90)"/>
+            <circle cx="90" cy="90" r="62" fill="none" stroke="#F0E4C6" stroke-width="24" stroke-dasharray="99 390" stroke-dashoffset="-291" transform="rotate(-90 90 90)"/>
+            <text x="90" y="86" text-anchor="middle" font-family="Fraunces" font-size="22" fill="#221A10">25/25</text>
+            <text x="90" y="104" text-anchor="middle" font-family="Inter" font-size="10" fill="#A79A82">split /25/25</text>
+          </svg>
+          <div class="legend">
+            <span><span class="dot" style="background:#B8892B;"></span>West 25%</span>
+            <span><span class="dot" style="background:#D9B96A;"></span>South 25%</span>
+            <span><span class="dot" style="background:#E7D8AE;"></span>North 25%</span>
+            <span><span class="dot" style="background:#F0E4C6;"></span>East 25%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LEAD TAGGING -->
+    <div class="page" id="leads">
+      <div class="topbar">
+        <div><h1>Lead Tagging</h1><p>Today's WhatsApp inquiries — tag each one against its ad</p></div>
+        <div class="chip">14 untagged</div>
+      </div>
+
+      <div class="lead-list">
+        <div class="lead-item">
+          <div><div class="lead-msg"><span class="from">+91 98xxxxx211</span><span class="txt">"I need more info on this product"</span></div>
+          <div class="lead-meta">Gardena · Sprinklers — Carousel — Messages · 9:14 AM</div></div>
+          <div class="tagbtns"><div class="tagbtn spam on">Spam</div><div class="tagbtn">Info-only</div><div class="tagbtn genuine">Genuine</div><div class="tagbtn">Converted</div></div>
+        </div>
+        <div class="lead-item">
+          <div><div class="lead-msg"><span class="from">+91 87xxxxx045</span><span class="txt">"Is this available in 25m size, what's the price?"</span></div>
+          <div class="lead-meta">Gardena · Hose Reels — Static — Profile Visit · 9:26 AM</div></div>
+          <div class="tagbtns"><div class="tagbtn spam">Spam</div><div class="tagbtn">Info-only</div><div class="tagbtn genuine on">Genuine</div><div class="tagbtn">Converted</div></div>
+        </div>
+        <div class="lead-item">
+          <div><div class="lead-msg"><span class="from">+91 90xxxxx782</span><span class="txt">"Ordered yesterday, wanted to confirm delivery"</span></div>
+          <div class="lead-meta">BKR · Fogging Machine — Carousel — East region · 9:31 AM</div></div>
+          <div class="tagbtns"><div class="tagbtn spam">Spam</div><div class="tagbtn">Info-only</div><div class="tagbtn genuine">Genuine</div><div class="tagbtn converted on">Converted</div></div>
+        </div>
+        <div class="lead-item">
+          <div><div class="lead-msg"><span class="from">+91 99xxxxx630</span><span class="txt">"👍"</span></div>
+          <div class="lead-meta">Velcro · Cord Organiser — Static — Profile Visit · 9:40 AM</div></div>
+          <div class="tagbtns"><div class="tagbtn spam on">Spam</div><div class="tagbtn">Info-only</div><div class="tagbtn genuine">Genuine</div><div class="tagbtn">Converted</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONNECTIONS -->
+    <div class="page" id="connections">
+      <div class="topbar">
+        <div><h1>Connections</h1><p>Meta Business Manager access, by ad account</p></div>
+        <div class="chip">Auto-sync: daily, 6:00 AM</div>
+      </div>
+      <div class="conn-grid">
+        <div class="conn-card"><div><div class="conn-name">Account 1 — Gardena</div><div class="conn-sub">Business Manager — connected</div></div><div class="status"><span class="status-dot" style="background:var(--green);"></span>Connected</div></div>
+        <div class="conn-card"><div><div class="conn-name">Account 2 — BKR + Velcro</div><div class="conn-sub">Business Manager — connected</div></div><div class="status"><span class="status-dot" style="background:var(--green);"></span>Connected</div></div>
+        <div class="conn-card"><div><div class="conn-name">Account 3 — Gorilla</div><div class="conn-sub">Awaiting admin access</div></div><div class="status"><span class="status-dot" style="background:var(--gold);"></span>Pending</div></div>
+        <div class="conn-card"><div><div class="conn-name">Halte DB — Region data</div><div class="conn-sub">Import not yet configured</div></div><div class="status"><span class="status-dot" style="background:var(--stone-dark);"></span>Not connected</div></div>
+      </div>
+    </div>
+
+    <!-- LOGIN -->
+    <div class="page" id="login">
+      <div class="topbar"><div><h1>Sign-in Screen</h1><p>Shown full-screen when live</p></div></div>
+      <div class="card" style="display:flex;justify-content:center;padding:60px;border:1px solid var(--stone);">
+        <div class="login-card" style="border:none;padding:0;width:380px;">
+          <div class="login-logo">Halte <span>Ad Intelligence</span></div>
+          <div class="login-sub">Sign in to view your brand reports</div>
+          <div class="field"><label>Email</label><input type="text" placeholder="harsh@halte.in"></div>
+          <div class="field"><label>Password</label><input type="password" placeholder="••••••••"></div>
+          <button class="btn-primary">Sign in</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function showPage(id, el){
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  el.classList.add('active');
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,183 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String
+  role          Role     @default(ANALYST)
+  createdAt     DateTime @default(now())
+}
+
+enum Role {
+  ADMIN
+  ANALYST
+}
+
+model Brand {
+  id            String   @id @default(cuid())
+  name          String   // "Gardena" | "BKR" | "Gorilla" | "Velcro"
+  colorToken    String   // maps to design token above
+  isSeasonal    Boolean  @default(false) // true for BKR/Gardena-style seasonal analysis
+  pageId        String   @unique // Facebook/Instagram Page ID — this is what disambiguates
+                          // a brand when multiple brands share one ad account
+  campaigns     Campaign[]
+}
+
+enum AdPlatform {
+  META
+  GOOGLE
+  AMAZON
+}
+
+model AdConnection {
+  id               String    @id @default(cuid())
+  platform         AdPlatform
+  platformAccountId String    @unique // Formerly metaAdAccountId
+  label            String?   // human label, e.g. "Account 1 — Gardena + Velcro"
+  accessTokenEnc   String    // encrypted, never plaintext
+  refreshTokenEnc  String?
+  tokenExpiresAt   DateTime?
+  status           ConnStatus @default(PENDING)
+  isEnabled        Boolean   @default(false)
+  lastSyncedAt     DateTime?
+  createdAt        DateTime  @default(now())
+  campaigns        Campaign[]
+}
+
+enum ConnStatus {
+  CONNECTED
+  PENDING
+  ERROR
+}
+
+model Campaign {
+  id               String   @id @default(cuid())
+  adConnectionId   String
+  adConnection     AdConnection @relation(fields: [adConnectionId], references: [id])
+  brandPageId      String?  // resolved during sync by matching pageId on the ad's creative
+  brand            Brand?   @relation(fields: [brandPageId], references: [pageId])
+  platformCampaignId String   @unique // Formerly metaCampaignId
+  name             String
+  pageId           String?  // the Page this campaign's ads run from — used to resolve brandPageId
+  objective        String   // Messages | ProfileVisit | Engagement | LinkClick etc
+  format           String   // Static | Carousel | Reel
+  region           String?  // mapped region for seasonal/regional analysis
+  products         String[] // SKU/category list, for seasonal mapping
+  adSets           AdSet[]
+}
+
+model AdSet {
+  id               String   @id @default(cuid())
+  campaignId       String
+  campaign         Campaign @relation(fields: [campaignId], references: [id])
+  platformAdSetId  String   @unique // Formerly metaAdSetId
+  name             String
+  optimizationGoal String?
+  destinationType  String?
+  dailyMetrics     DailyMetric[]
+  leads            Lead[]
+}
+
+model DailyMetric {
+  id           String   @id @default(cuid())
+  adSetId      String
+  adSet        AdSet    @relation(fields: [adSetId], references: [id])
+  date         DateTime
+  spend        Decimal
+  impressions  Int
+  clicks       Int
+  rawResponse  Json     // full raw Meta API response, kept for reprocessing
+
+  @@unique([adSetId, date])
+}
+
+model Lead {
+  id            String     @id @default(cuid())
+  adSetId       String?
+  adSet         AdSet?     @relation(fields: [adSetId], references: [id])
+  contactRef    String     // masked/partial phone or WhatsApp ref
+  messageText   String?
+  tag           LeadTag    @default(UNTAGGED)
+  taggedBy      String?    // user id
+  taggedAt      DateTime?
+  createdAt     DateTime   @default(now())
+}
+
+enum LeadTag {
+  UNTAGGED
+  SPAM
+  INFO_ONLY
+  GENUINE
+  CONVERTED
+  QUOTATION_SENT
+}
+
+model Recommendation {
+  id               String   @id @default(cuid())
+  brandId          String
+  adSetId          String
+  cycleDate        DateTime
+  costPerGenuine   Decimal
+  costPerSale      Decimal?
+  action           RecAction
+  reason           String
+}
+
+enum RecAction {
+  INCREASE
+  DECREASE
+  HOLD
+  HOLD_SEASONAL
+  MIXED_SEASON_REVIEW
+  NOT_RATED
+}
+
+model SyncLog {
+  id         String   @id @default(cuid())
+  brandId    String?
+  startedAt  DateTime @default(now())
+  finishedAt DateTime?
+  status     String   // success | error
+  errorMsg   String?
+  unmatchedCampaigns Json? // Array of campaign IDs that could not be mapped to a brand
+}
+
+model SeasonalRule {
+  id           String   @id @default(cuid())
+  product      String   @unique
+  validRegions String[] // e.g. ["North", "South"]
+  validMonths  Int[]    // e.g. [1, 2, 11, 12] for Nov, Dec, Jan, Feb
+}
+
+model SalesHistory {
+  id          String   @id @default(cuid())
+  orderDate   DateTime
+  sku         String
+  subCategory String?  // joined from MASTER_PRODUCT at import time
+  brand       String?
+  quantity    Int
+  shipToState String?
+  source      String   @default("amazon_gst_2023_2026_import")
+}
+
+model ProductOpportunityInsights {
+  id                     String @id @default(cuid())
+  productSku             String
+  targetState            String
+  peakMonth              String
+  season                 String
+  historicalUnitsSold    Int
+  historicalRevenue      Float
+  confidenceLevel        String
+  campaignRecommendation String
+}

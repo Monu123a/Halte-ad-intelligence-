@@ -3,25 +3,29 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --bg: #F7F8F4;
+  --card: #FFFFFF;
+  --ink: #1E241F;
+  --ink-soft: #5B6259;
+  --green: #2F5233;
+  --green-tint: #E7EFE6;
+  --amber: #C08A28;
+  --amber-tint: #F7EDD9;
+  --slate: #3B3A36;
+  --slate-tint: #EAE9E6;
+  --rust: #9C4B2E;
+  --rust-tint: #F3E4DD;
+  --stone: #DCD7CB;
+  --stone-dark: #A39C8B;
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+  font-feature-settings: "tnum" 1;
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+/* Flat cards with hairline borders */
+.card-base {
+  @apply bg-card border border-stone rounded-md;
 }
