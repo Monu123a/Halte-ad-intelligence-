@@ -4,19 +4,22 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
-  const conn = await prisma.adConnection.findUnique({
-    where: { platformAccountId: 'act_311914471593198' }
+  const connections = await prisma.adConnection.findMany({
+    where: { isEnabled: true, platform: 'META' }
   });
   
-  if (!conn) throw new Error("Connection not found");
+  console.log(`Found ${connections.length} enabled connections to sync...`);
   
-  console.log(`Forcing sync for connection ID: ${conn.id}...`);
-  
-  // Fake a BullMQ job object
-  const job = { data: { connectionId: conn.id } } as any;
-  
-  await (syncWorker as any).processFn(job);
-  console.log("Sync complete!");
+  for (const conn of connections) {
+    console.log(`\n--- Syncing ${conn.label || conn.platformAccountId} ---`);
+    try {
+      const job = { data: { connectionId: conn.id } } as any;
+      await (syncWorker as any).processFn(job);
+      console.log(`✅ Sync complete for ${conn.label}`);
+    } catch (e: any) {
+      console.error(`❌ Failed to sync ${conn.label}:`, e.message);
+    }
+  }
 }
 
 main().finally(() => {

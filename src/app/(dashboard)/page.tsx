@@ -1,14 +1,21 @@
 import { getDashboardRecommendations, getOverviewStats } from "@/lib/services";
 import prisma from "@/lib/prisma";
+import Link from "next/link";
 
-export default function OverviewPage() {
+export default function OverviewPage({ searchParams }: { searchParams: { page?: string, filter?: string } }) {
   return (
-    <OverviewContent />
+    <OverviewContent searchParams={searchParams} />
   );
 }
 
-async function OverviewContent() {
-  const recommendations = await getDashboardRecommendations();
+async function OverviewContent({ searchParams }: { searchParams: { page?: string, filter?: string } }) {
+  let recommendations = await getDashboardRecommendations();
+  
+  const filter = searchParams.filter;
+  if (filter && filter !== "ALL") {
+    recommendations = recommendations.filter(r => r.action === filter);
+  }
+
   const stats = await getOverviewStats();
   
   const currentMonthName = new Date().toLocaleString("en-US", { month: "long", year: "numeric" });
@@ -21,10 +28,15 @@ async function OverviewContent() {
 
   const brands = await prisma.brand.findMany();
   const brandMap = new Map(brands.map(b => [b.id, b]));
+  
+  const page = parseInt(searchParams.page || "1", 10);
+  const pageSize = 15;
+  const totalPages = Math.ceil(recommendations.length / pageSize);
+  const pagedRecommendations = recommendations.slice((page - 1) * pageSize, page * pageSize);
 
   const adSets = await prisma.adSet.findMany({
-    where: { id: { in: recommendations.map(r => r.adSetId) } },
-    include: { campaign: true }
+    where: { id: { in: pagedRecommendations.map(r => r.adSetId) } },
+    include: { campaign: { include: { adConnection: true } } }
   });
   const adSetMap = new Map(adSets.map(a => [a.id, a]));
   
@@ -42,11 +54,18 @@ async function OverviewContent() {
     return "bg-stone-dark text-white";
   };
   
+  const getPlatformTagClass = (platform: string) => {
+    if (platform === "GOOGLE") return "bg-[#FCE8E6] text-[#EA4335]";
+    if (platform === "AMAZON") return "bg-[#FEF5E6] text-[#FF9900]";
+    return "bg-[#E7F0FF] text-[#1877F2]";
+  };
+  
   const getRecClass = (action: string) => {
     if (action === "INCREASE") return "bg-green-tint text-green";
     if (action === "DECREASE") return "bg-rust-tint text-rust";
     if (action === "MIXED_SEASON_REVIEW") return "bg-amber-tint text-amber";
     if (action === "NOT_RATED") return "bg-stone text-ink-soft";
+    if (action === "NOT_ENOUGH_DATA") return "bg-stone text-ink-soft";
     return "bg-slate-tint text-slate";
   };
   
@@ -56,6 +75,7 @@ async function OverviewContent() {
     if (action === "HOLD_SEASONAL") return "Hold, seasonal";
     if (action === "MIXED_SEASON_REVIEW") return "Mixed season review";
     if (action === "NOT_RATED") return "Not rated";
+    if (action === "NOT_ENOUGH_DATA") return "Not enough data";
     return "Hold";
   };
 
@@ -110,40 +130,61 @@ async function OverviewContent() {
       </div>
 
       <div className="card-base p-7 mb-[1px]">
-        <h3 className="m-0 mb-1 text-[15px] font-bold font-sans">Recommendations this cycle</h3>
-        <div className="text-[12.5px] text-ink-soft mb-[18px]">
-          Generated from tagged leads + spend, ranked by cost per genuine lead
+        <div className="flex justify-between items-start mb-[18px]">
+          <div>
+            <h3 className="m-0 mb-1 text-[15px] font-bold font-sans">Recommendations this cycle</h3>
+            <div className="text-[12.5px] text-ink-soft">
+              Generated from tagged leads + spend, ranked by cost per genuine lead
+            </div>
+          </div>
+          <div className="flex gap-1.5 items-center">
+            <Link href="?filter=ALL" className={`px-2.5 py-1 rounded-sm text-[11px] font-semibold border border-transparent ${!filter || filter === 'ALL' ? 'bg-ink text-white' : 'bg-stone text-ink-soft hover:bg-stone-dark hover:text-white'}`}>All</Link>
+            <Link href="?filter=INCREASE" className={`px-2.5 py-1 rounded-sm text-[11px] font-semibold border ${filter === 'INCREASE' ? 'bg-green-tint text-green border-green/20' : 'bg-white border-stone text-ink-soft hover:bg-stone'}`}>Increase</Link>
+            <Link href="?filter=DECREASE" className={`px-2.5 py-1 rounded-sm text-[11px] font-semibold border ${filter === 'DECREASE' ? 'bg-rust-tint text-rust border-rust/20' : 'bg-white border-stone text-ink-soft hover:bg-stone'}`}>Reduce</Link>
+            <Link href="?filter=HOLD" className={`px-2.5 py-1 rounded-sm text-[11px] font-semibold border ${filter === 'HOLD' ? 'bg-slate-tint text-slate border-slate/20' : 'bg-white border-stone text-ink-soft hover:bg-stone'}`}>Hold</Link>
+            <Link href="?filter=NOT_ENOUGH_DATA" className={`px-2.5 py-1 rounded-sm text-[11px] font-semibold border ${filter === 'NOT_ENOUGH_DATA' ? 'bg-stone text-ink-soft border-stone-dark/20' : 'bg-white border-stone text-ink-soft hover:bg-stone'}`}>Not enough data</Link>
+          </div>
         </div>
         
         {recommendations.length === 0 ? (
           <div className="text-[13.5px] text-ink-soft py-4">No active ad sets found.</div>
         ) : (
-          <table className="w-full border-collapse">
+          <>
+            <table className="w-full border-collapse">
             <thead>
               <tr>
                 <th className="text-left text-[11.5px] text-ink-soft font-semibold py-2.5 px-2.5 border-b border-stone">Brand</th>
                 <th className="text-left text-[11.5px] text-ink-soft font-semibold py-2.5 px-2.5 border-b border-stone">Ad set</th>
+                <th className="text-left text-[11.5px] text-ink-soft font-semibold py-2.5 px-2.5 border-b border-stone">Source</th>
                 <th className="text-left text-[11.5px] text-ink-soft font-semibold py-2.5 px-2.5 border-b border-stone">Cost / genuine lead</th>
                 <th className="text-left text-[11.5px] text-ink-soft font-semibold py-2.5 px-2.5 border-b border-stone">Spend</th>
                 <th className="text-left text-[11.5px] text-ink-soft font-semibold py-2.5 px-2.5 border-b border-stone">Recommendation</th>
               </tr>
             </thead>
             <tbody>
-              {recommendations.map((rec, i) => {
+              {pagedRecommendations.map((rec, i) => {
                 const brand = brandMap.get(rec.brandId);
                 const adSet = adSetMap.get(rec.adSetId);
                 const spend = spendMap.get(rec.adSetId) || 0;
-                const isLast = i === recommendations.length - 1;
+                const isLast = i === pagedRecommendations.length - 1;
                 
                 return (
                   <tr key={rec.adSetId}>
                     <td className={`text-[13.5px] py-3 px-2.5 ${!isLast ? 'border-b border-stone' : ''}`}>
-                      <span className={`inline-block text-[10.5px] font-bold py-1 px-2.5 rounded-sm ${getBrandTagClass(brand?.name || "")}`}>
-                        {brand?.name || "Unknown"}
-                      </span>
+                      <div className="flex flex-col gap-1.5 items-start">
+                        <span className={`inline-block text-[10.5px] font-bold py-1 px-2.5 rounded-sm ${getBrandTagClass(brand?.name || "")}`}>
+                          {brand?.name || "Unknown"}
+                        </span>
+                        <span className={`inline-block text-[9px] font-bold uppercase tracking-wider py-0.5 px-1.5 rounded-sm ${getPlatformTagClass(adSet?.campaign?.adConnection?.platform || "META")}`}>
+                          {adSet?.campaign?.adConnection?.platform === "GOOGLE" ? "Google Ad" : adSet?.campaign?.adConnection?.platform === "AMAZON" ? "Amazon Ad" : "Meta Ad"}
+                        </span>
+                      </div>
                     </td>
                     <td className={`text-[13.5px] py-3 px-2.5 ${!isLast ? 'border-b border-stone' : ''}`}>
                       {adSet?.campaign?.products?.length ? `${adSet.campaign.products.join(', ')} — ` : ''}{adSet?.name || "Unknown"}
+                    </td>
+                    <td className={`text-[12px] text-ink-soft py-3 px-2.5 ${!isLast ? 'border-b border-stone' : ''}`}>
+                      {adSet?.campaign?.adConnection?.label || adSet?.campaign?.adConnection?.platformAccountId || "Unknown"}
                     </td>
                     <td className={`text-[13.5px] py-3 px-2.5 ${!isLast ? 'border-b border-stone' : ''}`}>
                       {rec.costPerGenuine === 0 ? "₹0" : `₹${Math.round(rec.costPerGenuine)}`}
@@ -161,6 +202,28 @@ async function OverviewContent() {
               })}
             </tbody>
           </table>
+          
+          {totalPages > 1 && (
+            <div className="flex justify-between items-center mt-6 pt-4 border-t border-stone">
+              <div className="text-[12.5px] text-ink-soft">
+                Showing {((page - 1) * pageSize) + 1} to {Math.min(page * pageSize, recommendations.length)} of {recommendations.length} recommendations
+              </div>
+              <div className="flex gap-2">
+                {page > 1 ? (
+                  <Link href={`/?page=${page - 1}${filter ? `&filter=${filter}` : ''}`} className="px-3 py-1.5 border border-stone rounded-sm text-[12.5px] hover:bg-stone">Previous</Link>
+                ) : (
+                  <span className="px-3 py-1.5 border border-stone rounded-sm text-[12.5px] text-stone-dark cursor-not-allowed">Previous</span>
+                )}
+                
+                {page < totalPages ? (
+                  <Link href={`/?page=${page + 1}${filter ? `&filter=${filter}` : ''}`} className="px-3 py-1.5 border border-stone rounded-sm text-[12.5px] hover:bg-stone">Next</Link>
+                ) : (
+                  <span className="px-3 py-1.5 border border-stone rounded-sm text-[12.5px] text-stone-dark cursor-not-allowed">Next</span>
+                )}
+              </div>
+            </div>
+          )}
+        </>
         )}
       </div>
     </div>

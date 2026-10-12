@@ -6,6 +6,7 @@ export interface AdSetStats {
   clicks: number;
   genuineLeads: number;
   convertedLeads: number;
+  totalTaggedLeads?: number;
   brandId: string;
   isSeasonalBrand: boolean;
   products?: string[];
@@ -101,7 +102,8 @@ export function generateRecommendations(
       group: AdSetStats[],
       costFn: (adset: AdSetStats) => number,
       baseIncreaseReason: string,
-      baseDecreaseReason: string
+      baseDecreaseReason: string,
+      isMessagingRank: boolean = false
     ) => {
       const annotated = group.map(adset => ({
         ...adset,
@@ -116,53 +118,61 @@ export function generateRecommendations(
 
       for (let i = 0; i < count; i++) {
         const adset = active[i];
-        let action: "INCREASE" | "DECREASE" | "HOLD" | "HOLD_SEASONAL" | "NOT_RATED" | "MIXED_SEASON_REVIEW" = "HOLD";
+        let action: "INCREASE" | "DECREASE" | "HOLD" | "HOLD_SEASONAL" | "NOT_RATED" | "MIXED_SEASON_REVIEW" | "NOT_ENOUGH_DATA" = "HOLD";
         let reason = "Average performance";
 
-        // Seasonal Logic
-        let seasonalAction: "HOLD_SEASONAL" | "MIXED_SEASON_REVIEW" | null = null;
-        if (adset.isSeasonalBrand && adset.products && adset.products.length > 0 && adset.region) {
-          let hasValid = false;
-          let hasInvalid = false;
+        // NOT ENOUGH DATA RULE
+        const totalTags = adset.totalTaggedLeads || 0;
+        if (isMessagingRank && totalTags < 10) {
+          action = "NOT_ENOUGH_DATA";
+          reason = `Not enough data (${totalTags} tagged leads, need at least 10)`;
+        } 
+        else {
+          // Seasonal Logic
+          let seasonalAction: "HOLD_SEASONAL" | "MIXED_SEASON_REVIEW" | null = null;
+          if (adset.isSeasonalBrand && adset.products && adset.products.length > 0 && adset.region) {
+            let hasValid = false;
+            let hasInvalid = false;
 
-          for (const prod of adset.products) {
-            const rule = seasonalLookup[prod];
-            if (rule) {
-              const validRegion = rule.validRegions.includes(adset.region);
-              const validMonth = rule.validMonths.includes(currentMonth);
-              if (validRegion && validMonth) {
-                hasValid = true;
-              } else {
-                hasInvalid = true;
+            for (const prod of adset.products) {
+              const rule = seasonalLookup[prod];
+              if (rule) {
+                const validRegion = rule.validRegions.includes(adset.region);
+                const validMonth = rule.validMonths.includes(currentMonth);
+                if (validRegion && validMonth) {
+                  hasValid = true;
+                } else {
+                  hasInvalid = true;
+                }
               }
             }
-          }
 
-          if (hasValid && hasInvalid) {
-            seasonalAction = "MIXED_SEASON_REVIEW";
-          } else if (hasInvalid && !hasValid) {
-            seasonalAction = "HOLD_SEASONAL";
-          }
-        }
-
-        if (seasonalAction === "MIXED_SEASON_REVIEW") {
-          action = "MIXED_SEASON_REVIEW";
-          reason = "Products have different seasons; mixed season review required";
-        } else if (seasonalAction === "HOLD_SEASONAL") {
-          action = "HOLD_SEASONAL";
-          reason = "Outside historically valid month/region window";
-        } else {
-          // Terciles
-          if (count >= 3) {
-            if (i < third) {
-              action = "INCREASE";
-              reason = baseIncreaseReason;
-            } else if (i >= count - third) {
-              action = "DECREASE";
-              reason = baseDecreaseReason;
+            if (hasValid && hasInvalid) {
+              seasonalAction = "MIXED_SEASON_REVIEW";
+            } else if (hasInvalid && !hasValid) {
+              seasonalAction = "HOLD_SEASONAL";
             }
+          }
+
+          if (seasonalAction === "MIXED_SEASON_REVIEW") {
+            action = "MIXED_SEASON_REVIEW";
+            reason = "Products have different seasons; mixed season review required";
+          } else if (seasonalAction === "HOLD_SEASONAL") {
+            action = "HOLD_SEASONAL";
+            reason = "Outside historically valid month/region window";
           } else {
-            reason = "Not enough active adsets in this goal for tercile comparison";
+            // Terciles
+            if (count >= 3) {
+              if (i < third) {
+                action = "INCREASE";
+                reason = baseIncreaseReason;
+              } else if (i >= count - third) {
+                action = "DECREASE";
+                reason = baseDecreaseReason;
+              }
+            } else {
+              reason = "Not enough active adsets in this goal for tercile comparison";
+            }
           }
         }
 
@@ -194,7 +204,8 @@ export function generateRecommendations(
       messagingAdSets,
       (a) => calculateCostPerGenuine(a.spend, a.genuineLeads),
       "Best-performing tercile (Cost per Genuine Lead)",
-      "Worst-performing tercile (Cost per Genuine Lead)"
+      "Worst-performing tercile (Cost per Genuine Lead)",
+      true // isMessagingRank
     );
 
     // Rank Link Clicks
@@ -202,7 +213,8 @@ export function generateRecommendations(
       linkClickAdSets,
       (a) => calculateCostPerClick(a.spend, a.clicks),
       "Best-performing tercile (click cost, not lead quality)",
-      "Worst-performing tercile (click cost, not lead quality)"
+      "Worst-performing tercile (click cost, not lead quality)",
+      false
     );
   }
 

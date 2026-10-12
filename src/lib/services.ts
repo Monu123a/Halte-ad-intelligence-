@@ -7,7 +7,7 @@ export async function getDashboardRecommendations() {
       campaign: { include: { brand: true } },
       dailyMetrics: true,
       leads: {
-        where: { tag: { in: ["GENUINE", "CONVERTED"] } }
+        where: { tag: { not: "UNTAGGED" } }
       }
     }
   });
@@ -26,8 +26,9 @@ export async function getDashboardRecommendations() {
   const stats: AdSetStats[] = adSets.map((adSet) => {
     const spend = adSet.dailyMetrics.reduce((acc, curr) => acc + Number(curr.spend), 0);
     const clicks = adSet.dailyMetrics.reduce((acc, curr) => acc + curr.clicks, 0);
-    const genuineLeads = adSet.leads.length;
+    const genuineLeads = adSet.leads.filter(l => l.tag === "GENUINE" || l.tag === "CONVERTED").length;
     const convertedLeads = adSet.leads.filter(l => l.tag === "CONVERTED").length;
+    const totalTaggedLeads = adSet.leads.length;
     
     return {
       adSetId: adSet.id,
@@ -35,6 +36,7 @@ export async function getDashboardRecommendations() {
       clicks,
       genuineLeads,
       convertedLeads,
+      totalTaggedLeads,
       brandId: adSet.campaign.brand?.id || "unmapped",
       isSeasonalBrand: adSet.campaign.brand?.isSeasonal || false,
       products: adSet.campaign.products,

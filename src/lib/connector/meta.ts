@@ -71,7 +71,7 @@ export class MetaAdsConnector implements AdPlatformConnector {
   }
 
   async fetchCampaigns(accessToken: string, adAccountId: string): Promise<RawCampaign[]> {
-    const url = `https://graph.facebook.com/v19.0/${adAccountId}/campaigns?fields=id,name,objective,ads{creative{effective_object_story_id,object_story_spec,object_id,instagram_actor_id,instagram_permalink_url}}&limit=100&access_token=${accessToken}`;
+    const url = `https://graph.facebook.com/v19.0/${adAccountId}/campaigns?fields=id,name,objective,ads{name,creative{effective_object_story_id,object_story_spec,object_id,instagram_actor_id,instagram_permalink_url}}&limit=100&access_token=${accessToken}`;
     const data = await this.fetchAllPages(url);
 
     return data.map((c: any) => {
@@ -82,11 +82,15 @@ export class MetaAdsConnector implements AdPlatformConnector {
       } else if (firstAd?.creative?.effective_object_story_id) {
         pageId = firstAd.creative.effective_object_story_id.split('_')[0];
       }
+      
+      const adNames = c.ads?.data?.map((ad: any) => ad.name) || [];
+
       return {
         id: c.id,
         name: c.name,
         objective: c.objective,
         pageId,
+        adNames,
         rawResponse: c // Passed for mapping later
       };
     });

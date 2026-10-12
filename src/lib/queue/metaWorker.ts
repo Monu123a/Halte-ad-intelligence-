@@ -65,41 +65,59 @@ export const syncWorker = new Worker(
         return "All India";
       };
 
+      const salesProds = await prisma.salesHistory.findMany({
+        select: { subCategory: true, brand: true },
+        distinct: ['subCategory', 'brand'],
+        where: { subCategory: { not: null }, brand: { not: null } }
+      });
+
       for (const camp of campaigns) {
         let brandPageId: string | null = null;
         let products: string[] = [];
         
-        // 1. Try mapping Gardena/Gorilla by Page ID
-        if (camp.pageId) {
-          const brand = allBrands.find(b => b.pageId === camp.pageId);
-          if (brand) {
-            brandPageId = brand.pageId;
+        // Combine all text for deep search
+        const cleanName = camp.name.replace(/^Instagram post:\s*/i, '').replace(/^Instagram पोस्ट:\s*/i, '');
+        const campAdSets = adSets.filter(a => a.campaignId === camp.id).map(a => a.name);
+        const adNames = camp.adNames || [];
+        const fullText = [cleanName, ...campAdSets, ...adNames].join(" ").toLowerCase();
+
+        // 1. Map brands by name
+        const foundBrands = new Set<string>();
+        for (const b of allBrands) {
+          if (fullText.includes(b.name.toLowerCase())) {
+            foundBrands.add(b.pageId);
           }
         }
         
-        const cleanName = camp.name.replace(/^Instagram post:\s*/i, '').replace(/^Instagram पोस्ट:\s*/i, '');
+        // 2. Map by Page ID if still 0
+        if (foundBrands.size === 0 && camp.pageId) {
+          const brand = allBrands.find(b => b.pageId === camp.pageId);
+          if (brand) foundBrands.add(brand.pageId);
+        }
 
-        // 2. Map BKR/Velcro by keywords
-        if (!brandPageId) {
-          const lowerName = cleanName.toLowerCase();
-          if (lowerName.includes("bkr")) {
-            const b = allBrands.find(b => b.name.toLowerCase() === "bkr");
-            if (b) brandPageId = b.pageId;
-          } else if (lowerName.includes("velcro")) {
-            const b = allBrands.find(b => b.name.toLowerCase() === "velcro");
-            if (b) brandPageId = b.pageId;
+        // 3. Map by SalesHistory subCategories
+        if (foundBrands.size === 0) {
+          for (const sp of salesProds) {
+            if (sp.subCategory && fullText.includes(sp.subCategory.toLowerCase())) {
+              const brand = allBrands.find(b => b.name.toLowerCase() === sp.brand?.toLowerCase());
+              if (brand) foundBrands.add(brand.pageId);
+            }
           }
         }
 
-        // 3. Product mapping
-        const lowerName = cleanName.toLowerCase();
-        if (lowerName.includes("fogging") || lowerName.includes("fogger")) products.push("Fogging Machine");
-        if (lowerName.includes("chainsaw") || lowerName.includes("chain saw")) products.push("Chainsaw");
-        if (lowerName.includes("sprinkler")) products.push("Sprinklers");
-        if (lowerName.includes("hose reel") || lowerName.includes("hose")) products.push("Hose Reels");
-        if (lowerName.includes("snow chain")) products.push("Snow Chains");
-        if (lowerName.includes("mounting tape") || lowerName.includes("tape")) products.push("Mounting Tape");
-        if (lowerName.includes("cord organiser")) products.push("Cord Organiser");
+        // Resolution: If exactly 1 brand is found, map it. If >1, it's a shared campaign (needs decision).
+        if (foundBrands.size === 1) {
+          brandPageId = Array.from(foundBrands)[0];
+        }
+
+        // 4. Product keyword mapping
+        if (fullText.includes("fogging") || fullText.includes("fogger")) products.push("Fogging Machine");
+        if (fullText.includes("chainsaw") || fullText.includes("chain saw")) products.push("Chainsaw");
+        if (fullText.includes("sprinkler")) products.push("Sprinklers");
+        if (fullText.includes("hose reel") || fullText.includes("hose")) products.push("Hose Reels");
+        if (fullText.includes("snow chain")) products.push("Snow Chains");
+        if (fullText.includes("mounting tape") || fullText.includes("tape")) products.push("Mounting Tape");
+        if (fullText.includes("cord organiser")) products.push("Cord Organiser");
         // ... can be expanded
         
         if (!brandPageId) {

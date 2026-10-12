@@ -36,3 +36,14 @@ yarn-error.log*
 next-env.d.ts
 .env
 tunnel.log
+
+# Dumps and scratch
+local_db_dump.json
+discovery.json
+.last_google_token
+update*.ts
+test*.ts
+dump*.ts
+restore*.ts
+fix*.ts
+clean*.ts

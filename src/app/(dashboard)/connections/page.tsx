@@ -28,12 +28,26 @@ export default async function ConnectionsPage() {
             Auto-sync: daily, 6:00 AM
           </div>
           {isAdmin && (
-            <Link 
-              href="/api/auth/meta/connect" 
-              className="bg-ink text-white py-2 px-4 rounded-sm text-[12.5px] font-semibold hover:bg-ink/90 transition-colors"
-            >
-              Connect Meta
-            </Link>
+            <>
+              <Link 
+                href="/api/auth/meta/connect" 
+                className="bg-ink text-white py-2 px-4 rounded-sm text-[12.5px] font-semibold hover:bg-ink/90 transition-colors"
+              >
+                Connect Meta
+              </Link>
+              <Link 
+                href="/api/auth/google/connect" 
+                className="bg-[#EA4335] text-white py-2 px-4 rounded-sm text-[12.5px] font-semibold hover:opacity-90 transition-opacity"
+              >
+                Connect Google Ads
+              </Link>
+              <Link 
+                href="/api/auth/amazon/connect" 
+                className="bg-[#FF9900] text-white py-2 px-4 rounded-sm text-[12.5px] font-semibold hover:opacity-90 transition-opacity ml-2"
+              >
+                Connect Amazon Ads
+              </Link>
+            </>
           )}
         </div>
       </div>
@@ -75,11 +89,15 @@ export default async function ConnectionsPage() {
             displayStatus = "Error";
             dotColor = "bg-rust";
           }
+          
+          const reconnectUrl = conn.platform === "GOOGLE" ? "/api/auth/google/connect" : "/api/auth/meta/connect";
 
           return (
             <div key={conn.id} className="bg-card p-6 flex justify-between items-center">
               <div>
                 <div className="font-serif text-[16px] font-semibold flex items-center gap-2">
+                  {conn.platform === "GOOGLE" && <span className="bg-[#FCE8E6] text-[#EA4335] text-[10px] uppercase font-bold px-2 py-0.5 rounded-sm">Google</span>}
+                  {conn.platform === "META" && <span className="bg-[#E7F0FF] text-[#1877F2] text-[10px] uppercase font-bold px-2 py-0.5 rounded-sm">Meta</span>}
                   {conn.label || `Account ${conn.platformAccountId}`}
                   {!conn.isEnabled && <span className="text-[10px] uppercase font-bold bg-stone px-2 py-0.5 rounded-sm text-ink-soft">Disabled</span>}
                 </div>
@@ -94,6 +112,14 @@ export default async function ConnectionsPage() {
               <div className="text-[12px] font-semibold flex items-center text-ink-soft">
                 <span className={`w-2 h-2 rounded-full inline-block mr-2 ${dotColor}`}></span>
                 {displayStatus}
+                {conn.status === "ERROR" && isAdmin && (
+                  <Link 
+                    href={reconnectUrl} 
+                    className="ml-4 bg-rust-tint text-rust py-1 px-3 rounded-sm hover:bg-rust hover:text-white transition-colors"
+                  >
+                    Reconnect
+                  </Link>
+                )}
               </div>
             </div>
           );

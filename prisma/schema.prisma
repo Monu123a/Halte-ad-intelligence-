@@ -6,8 +6,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -44,6 +45,7 @@ model AdConnection {
   platform         AdPlatform
   platformAccountId String    @unique // Formerly metaAdAccountId
   label            String?   // human label, e.g. "Account 1 — Gardena + Velcro"
+  metadata         String?   // JSON string for MCC ids, etc
   accessTokenEnc   String    // encrypted, never plaintext
   refreshTokenEnc  String?
   tokenExpiresAt   DateTime?
@@ -140,6 +142,7 @@ enum RecAction {
   HOLD_SEASONAL
   MIXED_SEASON_REVIEW
   NOT_RATED
+  NOT_ENOUGH_DATA
 }
 
 model SyncLog {
