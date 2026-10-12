@@ -69,12 +69,12 @@ export const googleWorker = new Worker(
     // 3. Prepare Brand Mapping Lookups
     const brands = await prisma.brand.findMany();
     const history = await prisma.salesHistory.findMany({
-      select: { brandName: true, subCategory: true, productCategory: true }
+      select: { brand: true, subCategory: true }
     });
     
     const productToBrandMap = new Map<string, string>();
     history.forEach(h => {
-      if (h.subCategory) productToBrandMap.set(h.subCategory.toLowerCase(), h.brandName);
+      if (h.subCategory && h.brand) productToBrandMap.set(h.subCategory.toLowerCase(), h.brand);
     });
 
     // 4. Map & Upsert Campaigns
@@ -85,7 +85,7 @@ export const googleWorker = new Worker(
       let detectedBrand: string | null = null;
       const matchedProducts = new Set<string>();
 
-      for (const [product, brandName] of productToBrandMap.entries()) {
+      for (const [product, brandName] of Array.from(productToBrandMap.entries())) {
         if (searchString.includes(product)) {
           detectedBrand = brandName;
           matchedProducts.add(product);
@@ -101,37 +101,38 @@ export const googleWorker = new Worker(
       const brandObj = detectedBrand ? brands.find(b => b.name === detectedBrand) : null;
       
       await prisma.campaign.upsert({
-        where: { platformId: c.id },
+        where: { platformCampaignId: c.id },
         update: {
           name: c.name,
           objective: c.objective,
-          brandId: brandObj?.id,
+          brandPageId: brandObj?.pageId,
           products: Array.from(matchedProducts)
         },
         create: {
-          platformId: c.id,
+          platformCampaignId: c.id,
           name: c.name,
           objective: c.objective,
-          connectionId: conn.id,
-          brandId: brandObj?.id,
+          format: "Search",
+          adConnectionId: conn.id,
+          brandPageId: brandObj?.pageId,
           products: Array.from(matchedProducts)
         }
       });
     }
 
     // 5. Upsert Ad Sets
-    const campMap = await prisma.campaign.findMany({ where: { connectionId: conn.id } });
-    const campIdMap = new Map(campMap.map(c => [c.platformId, c.id]));
+    const campMap = await prisma.campaign.findMany({ where: { adConnectionId: conn.id } });
+    const campIdMap = new Map(campMap.map(c => [c.platformCampaignId, c.id]));
 
     for (const a of rawAdSets) {
       const parentCampId = campIdMap.get(a.campaignId);
       if (!parentCampId) continue; // Skip orphaned
       
       await prisma.adSet.upsert({
-        where: { platformId: a.id },
+        where: { platformAdSetId: a.id },
         update: { name: a.name },
         create: {
-          platformId: a.id,
+          platformAdSetId: a.id,
           name: a.name,
           campaignId: parentCampId
         }
@@ -140,30 +141,34 @@ export const googleWorker = new Worker(
 
     // 6. Upsert Metrics
     const asMap = await prisma.adSet.findMany({ 
-      where: { campaign: { connectionId: conn.id } } 
+      where: { campaign: { adConnectionId: conn.id } } 
     });
-    const asIdMap = new Map(asMap.map(a => [a.platformId, a.id]));
+    const asIdMap = new Map(asMap.map(a => [a.platformAdSetId, a.id]));
 
     for (const m of metrics) {
       const parentAdSetId = asIdMap.get(m.adSetId);
       if (!parentAdSetId) continue;
       
-      const id = `${parentAdSetId}_${m.date.toISOString().split('T')[0]}`;
-      
       await prisma.dailyMetric.upsert({
-        where: { id },
+        where: {
+          adSetId_date: {
+            adSetId: parentAdSetId,
+            date: m.date
+          }
+        },
         update: {
           spend: m.spend,
           impressions: m.impressions,
-          clicks: m.clicks
+          clicks: m.clicks,
+          rawResponse: m.rawResponse || {}
         },
         create: {
-          id,
           adSetId: parentAdSetId,
           date: m.date,
           spend: m.spend,
           impressions: m.impressions,
-          clicks: m.clicks
+          clicks: m.clicks,
+          rawResponse: m.rawResponse || {}
         }
       });
     }

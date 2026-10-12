@@ -117,7 +117,7 @@ async function main() {
         objective: seed.objective,
         format: seed.format,
         region: seed.region,
-        product: seed.product,
+        products: [seed.product],
       },
     });
 

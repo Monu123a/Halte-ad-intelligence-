@@ -24,22 +24,27 @@ export async function GET(req: Request) {
 
     for (const acc of accounts) {
       await prisma.adConnection.upsert({
-        where: { accountId: acc.id },
+        where: { platformAccountId: acc.id },
         update: {
-          accessToken: encryptedToken,
-          refreshToken: encryptedRefresh,
+          accessTokenEnc: encryptedToken,
+          refreshTokenEnc: encryptedRefresh,
           tokenExpiresAt: expiresAt,
-          isEnabled: true, // We'll auto-enable for now
-          platform: "AMAZON"
+          status: "CONNECTED",
+          isEnabled: true,
+          platform: "AMAZON",
+          label: acc.name,
+          metadata: acc.metadata ? JSON.stringify(acc.metadata) : null
         },
         create: {
-          accountId: acc.id,
-          accountName: acc.name,
+          platformAccountId: acc.id,
+          label: acc.name,
           platform: "AMAZON",
-          accessToken: encryptedToken,
-          refreshToken: encryptedRefresh,
+          accessTokenEnc: encryptedToken,
+          refreshTokenEnc: encryptedRefresh,
           tokenExpiresAt: expiresAt,
-          isEnabled: true
+          status: "CONNECTED",
+          isEnabled: true,
+          metadata: acc.metadata ? JSON.stringify(acc.metadata) : null
         }
       });
     }
