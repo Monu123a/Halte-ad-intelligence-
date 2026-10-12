@@ -2,6 +2,8 @@ import { getDashboardRecommendations, getOverviewStats } from "@/lib/services";
 import prisma from "@/lib/prisma";
 import Link from "next/link";
 
+export const dynamic = "force-dynamic";
+
 export default function OverviewPage({ searchParams }: { searchParams: { page?: string, filter?: string } }) {
   return (
     <OverviewContent searchParams={searchParams} />

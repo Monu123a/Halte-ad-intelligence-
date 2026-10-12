@@ -1,6 +1,8 @@
 import prisma from "@/lib/prisma";
 import LeadsClient from "./LeadsClient";
 
+export const dynamic = "force-dynamic";
+
 export default async function LeadsPage({ searchParams }: { searchParams: { tag?: string, q?: string } }) {
   const currentTag = searchParams.tag || "UNTAGGED";
   const query = searchParams.q || "";

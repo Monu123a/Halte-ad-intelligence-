@@ -3,6 +3,8 @@ import Link from "next/link";
 import { getSession } from "@/lib/auth";
 import { UnmappedCampaigns } from "@/components/UnmappedCampaigns";
 
+export const dynamic = "force-dynamic";
+
 export default async function ConnectionsPage() {
   const session = await getSession();
   const isAdmin = session?.role === "ADMIN";

@@ -2,6 +2,8 @@ import Link from "next/link";
 import prisma from "@/lib/prisma";
 import MonthSelector from "./MonthSelector";
 
+export const dynamic = "force-dynamic";
+
 export default async function BrandReportPage({ 
   params,
   searchParams
