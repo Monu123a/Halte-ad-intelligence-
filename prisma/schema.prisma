@@ -184,3 +184,31 @@ model ProductOpportunityInsights {
   confidenceLevel        String
   campaignRecommendation String
 }
+
+model WebsiteAnalytics {
+  id           String   @id
+  sessionId    String
+  visitorId    String
+  pagePath     String
+  pageTitle    String?
+  brand        String?
+  category     String?
+  sku          String?
+  referrer     String?  @default("direct")
+  utmSource    String?
+  utmMedium    String?
+  utmCampaign  String?
+  deviceType   String   @default("desktop")
+  timeSpentSec Int      @default(0)
+  maxScrollPct Int      @default(0)
+  clicksCount  Int      @default(0)
+  isExit       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([sessionId])
+  @@index([brand])
+  @@index([pagePath])
+}
+

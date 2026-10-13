@@ -128,11 +128,19 @@ export default async function ConnectionsPage() {
         })}
         <div className="bg-card p-6 flex justify-between items-center">
           <div>
-            <div className="font-serif text-[16px] font-semibold">Halte DB — Region data</div>
-            <div className="text-[12px] text-ink-soft mt-1">Import not yet configured</div>
+            <div className="font-serif text-[16px] font-semibold flex items-center gap-2">
+              <span className="bg-green-tint text-green text-[10px] uppercase font-bold px-2 py-0.5 rounded-sm">
+                Live
+              </span>
+              Halte.in &mdash; Website Telemetry &amp; Behavior
+            </div>
+            <div className="text-[12px] text-ink-soft mt-1">
+              {await prisma.websiteAnalytics.count().then((c) => c.toLocaleString())} pageviews &amp; sessions &middot; Live telemetry active
+            </div>
           </div>
-          <div className="text-[12px] font-semibold flex items-center">
-            <span className="w-2 h-2 rounded-full bg-stone-dark inline-block mr-2"></span>Not connected
+          <div className="text-[12px] font-semibold flex items-center text-ink-soft">
+            <span className="w-2 h-2 rounded-full bg-green inline-block mr-2"></span>
+            Connected
           </div>
         </div>
       </div>

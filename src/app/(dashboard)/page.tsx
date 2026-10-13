@@ -1,4 +1,5 @@
 import { getDashboardRecommendations, getOverviewStats } from "@/lib/services";
+import { getWebsiteAnalyticsData, formatDuration } from "@/lib/analyticsService";
 import prisma from "@/lib/prisma";
 import Link from "next/link";
 
@@ -19,6 +20,7 @@ async function OverviewContent({ searchParams }: { searchParams: { page?: string
   }
 
   const stats = await getOverviewStats();
+  const { overview: webOverview } = await getWebsiteAnalyticsData({ days: 30 });
   
   const currentMonthName = new Date().toLocaleString("en-US", { month: "long", year: "numeric" });
   
@@ -128,6 +130,49 @@ async function OverviewContent({ searchParams }: { searchParams: { page?: string
           <div className="font-serif text-[26px] font-semibold">{stats.spamRate}%</div>
           <div className="text-[12.5px] text-ink-soft mt-1">Leads flagged spam</div>
           {stats.latestSync && <div className="text-[11.5px] mt-2.5 font-semibold text-stone-dark">Live data</div>}
+        </div>
+      </div>
+
+      {/* Website Telemetry & Behavior Pulse Strip */}
+      <div className="card-base p-6 mb-7 flex flex-wrap justify-between items-center gap-4 bg-card border-stone">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="w-2 h-2 rounded-full bg-green animate-pulse"></span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-green">Halte.in Website Pulse</span>
+          </div>
+          <h3 className="text-[15px] font-bold font-sans m-0">Traffic, Bounce &amp; Scroll Behavior</h3>
+          <p className="text-[12.5px] text-ink-soft m-0 mt-0.5">
+            {webOverview.totalSessions.toLocaleString()} sessions &middot; {webOverview.totalPageviews.toLocaleString()} pageviews across all brands
+          </p>
+        </div>
+
+        <div className="flex gap-6 items-center">
+          <div>
+            <div className="font-serif text-[20px] font-semibold text-ink">{webOverview.bounceRate}%</div>
+            <div className="text-[11.5px] text-ink-soft">Bounce rate</div>
+          </div>
+          <div className="h-8 w-[1px] bg-stone"></div>
+          <div>
+            <div className="font-serif text-[20px] font-semibold text-ink">{formatDuration(webOverview.avgSessionDurationSec)}</div>
+            <div className="text-[11.5px] text-ink-soft">Avg. time spent</div>
+          </div>
+          <div className="h-8 w-[1px] bg-stone"></div>
+          <div>
+            <div className="font-serif text-[20px] font-semibold text-ink">{webOverview.avgScrollDepthPct}%</div>
+            <div className="text-[11.5px] text-ink-soft">Avg. scroll depth</div>
+          </div>
+          <div className="h-8 w-[1px] bg-stone"></div>
+          <div>
+            <div className="font-serif text-[20px] font-semibold text-ink">{webOverview.pagesPerSession}</div>
+            <div className="text-[11.5px] text-ink-soft">Pages / session</div>
+          </div>
+
+          <Link
+            href="/analytics"
+            className="ml-2 bg-ink text-white py-2 px-4 rounded-sm text-[12px] font-semibold hover:bg-gold transition-colors"
+          >
+            Deep Dive &rarr;
+          </Link>
         </div>
       </div>
 

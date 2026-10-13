@@ -11,6 +11,7 @@ export function Sidebar() {
 
   const navItems = [
     { label: "Overview", href: "/" },
+    { label: "Website Analytics", href: "/analytics" },
     { label: "Brand Report", href: "/brand/Gardena" }, // Default to Gardena
     { label: "Lead Tagging", href: "/leads" },
     { label: "Connections", href: "/connections" },

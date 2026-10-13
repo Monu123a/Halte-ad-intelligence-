@@ -5,8 +5,12 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const token = req.cookies.get("session")?.value;
 
-  // Allow auth API routes
-  if (pathname.startsWith("/api/auth")) {
+  // Allow auth, webhook, and cron API routes
+  if (
+    pathname.startsWith("/api/auth") ||
+    pathname.startsWith("/api/webhooks") ||
+    pathname.startsWith("/api/cron")
+  ) {
     return NextResponse.next();
   }
   
