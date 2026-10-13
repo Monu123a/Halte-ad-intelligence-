@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { runMetaSync } from "@/lib/sync/metaSync";
 import { runGoogleSync } from "@/lib/sync/googleSync";
+import { runWebsiteAnalyticsSync } from "@/lib/sync/websiteAnalyticsSync";
 
 export const dynamic = "force-dynamic";
 
@@ -32,11 +33,15 @@ export async function GET(req: Request) {
         results.push({ id: conn.id, platform: conn.platform, label: conn.label, status: "error", error: err.message });
       }
     }
+    
+    // Sync Halte website telemetry (bounce rate, time spent, scroll depth)
+    const webSync = await runWebsiteAnalyticsSync();
 
     return NextResponse.json({
       success: true,
       syncedAt: new Date().toISOString(),
       totalConnections: connections.length,
+      websiteTelemetrySync: webSync,
       results
     });
   } catch (error: any) {

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getWebsiteAnalyticsData, formatDuration } from "@/lib/analyticsService";
+import { runWebsiteAnalyticsSync } from "@/lib/sync/websiteAnalyticsSync";
 
 export const dynamic = "force-dynamic";
 
@@ -9,10 +10,19 @@ interface AnalyticsPageProps {
     brand?: string;
     page?: string;
     q?: string;
+    sync?: string;
   };
 }
 
 export default async function WebsiteAnalyticsPage({ searchParams }: AnalyticsPageProps) {
+  if (searchParams.sync === "true") {
+    try {
+      await runWebsiteAnalyticsSync();
+    } catch (e) {
+      console.warn("Manual sync error:", e);
+    }
+  }
+
   const days = parseInt(searchParams.days || "30", 10);
   const brand = searchParams.brand || "ALL";
   const page = parseInt(searchParams.page || "1", 10);
@@ -124,6 +134,17 @@ export default async function WebsiteAnalyticsPage({ searchParams }: AnalyticsPa
             <span className="w-2 h-2 rounded-full bg-green animate-pulse"></span>
             Halte.in Live Telemetry
           </div>
+
+          <Link
+            href={`/analytics?days=${days}&brand=${brand}&sync=true`}
+            className="text-[12px] font-semibold border border-stone px-3 py-2 rounded-md bg-card text-ink hover:bg-stone/30 transition-colors flex items-center gap-1.5"
+            title="Fetch and sync recent visitor telemetry from Halte.in"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+            </svg>
+            Sync Now
+          </Link>
         </div>
       </div>
 
