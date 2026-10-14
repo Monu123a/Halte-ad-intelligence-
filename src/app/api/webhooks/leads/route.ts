@@ -68,12 +68,35 @@ export async function POST(req: Request) {
     const pushName = data?.pushName ? String(data.pushName).trim() : "";
     const contactRef = pushName ? `${pushName} (+${cleanPhone})` : (cleanPhone ? `+${cleanPhone}` : "Unknown");
 
-    const text =
-      data?.message?.conversation ||
-      data?.message?.extendedTextMessage?.text ||
-      data?.message?.imageMessage?.caption ||
-      data?.message?.videoMessage?.caption ||
-      "[Media message]";
+    // Extract rich message text from any WhatsApp message type
+    const msg = data?.message || {};
+    let text = "";
+
+    if (msg.conversation) {
+      text = msg.conversation;
+    } else if (msg.extendedTextMessage?.text) {
+      text = msg.extendedTextMessage.text;
+    } else if (msg.imageMessage) {
+      text = msg.imageMessage.caption ? `[Photo] ${msg.imageMessage.caption}` : "[Photo / Image]";
+    } else if (msg.videoMessage) {
+      text = msg.videoMessage.caption ? `[Video] ${msg.videoMessage.caption}` : "[Video]";
+    } else if (msg.documentMessage) {
+      const docName = msg.documentMessage.fileName || msg.documentMessage.title || "File";
+      const docCaption = msg.documentMessage.caption ? ` - ${msg.documentMessage.caption}` : "";
+      text = `[Document: ${docName}${docCaption}]`;
+    } else if (msg.locationMessage) {
+      const locName = msg.locationMessage.name || msg.locationMessage.address || "Pinned Location";
+      text = `[Location: ${locName}]`;
+    } else if (msg.audioMessage) {
+      text = "[Voice Note / Audio]";
+    } else if (msg.contactMessage) {
+      text = `[Contact Card: ${msg.contactMessage.displayName || "Contact"}]`;
+    } else if (msg.stickerMessage) {
+      text = "[Sticker]";
+    } else {
+      text = "[Media / Action message]";
+    }
+
 
     const instanceLabel = body.instance ? `[${body.instance}] ` : "";
     const messageText = `${instanceLabel}${text}`;
