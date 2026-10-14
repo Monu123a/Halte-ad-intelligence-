@@ -40,50 +40,137 @@ export default function LeadsClient({ initialLeads, currentTag }: { initialLeads
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const downloadTemplate = async () => {
+    const XLSX = await import("xlsx");
+    const sampleData = [
+      {
+        "Phone Number": "9914130130",
+        "Customer Inquiry / Product": "Customer inquired about Gardena RollUp 30m Hose Reel pricing & warranty",
+        "Ad Set / Campaign (Optional)": "Gardena_Search_AdSet_01"
+      },
+      {
+        "Phone Number": "9876543210",
+        "Customer Inquiry / Product": "Need quotation for BKR 52cc Brush Cutter with tiller attachment",
+        "Ad Set / Campaign (Optional)": ""
+      },
+      {
+        "Phone Number": "9812345678",
+        "Customer Inquiry / Product": "Bulk inquiry for Gorilla Super Glue 15g pack of 10",
+        "Ad Set / Campaign (Optional)": "Gorilla_Meta_AdSet_02"
+      }
+    ];
+
+    const ws = XLSX.utils.json_to_sheet(sampleData);
+    // Set column widths
+    ws["!cols"] = [{ wch: 18 }, { wch: 65 }, { wch: 30 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Leads_Template");
+    XLSX.writeFile(wb, "halte_leads_template.xlsx");
+  };
+
+  const exportToExcel = async () => {
+    if (leads.length === 0) {
+      alert("No leads to export");
+      return;
+    }
+    const XLSX = await import("xlsx");
+    const exportData = filteredLeads.map((l) => ({
+      "Contact Ref": l.contactRef,
+      "Message / Inquiry": l.messageText || "",
+      "Tag": l.tag,
+      "Brand": l.adSet?.campaign?.brand?.name || "Unassigned",
+      "Ad Set": l.adSet?.name || "Direct / Web",
+      "Date": new Date(l.createdAt).toLocaleDateString(),
+      "Time": new Date(l.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    ws["!cols"] = [{ wch: 18 }, { wch: 55 }, { wch: 16 }, { wch: 16 }, { wch: 25 }, { wch: 14 }, { wch: 12 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Leads_Export");
+    XLSX.writeFile(wb, `halte_leads_${currentTag.toLowerCase()}_export.xlsx`);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setImporting(true);
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const csv = event.target?.result as string;
-      const lines = csv.split("\n").filter(l => l.trim().length > 0);
-      
-      const payload = lines.map(line => {
-        const parts = line.split(",");
-        const contactRef = parts[0]?.trim();
-        const adSetId = parts.length > 2 ? parts[parts.length - 1].trim() : undefined;
-        const msgParts = parts.length > 2 ? parts.slice(1, parts.length - 1) : parts.slice(1);
-        const messageText = msgParts.join(",").replace(/^"|"$/g, "").trim();
-        
-        return { 
-          contactRef, 
-          messageText,
-          adSetId: adSetId && adSetId.length > 0 ? adSetId : undefined
-        };
-      }).filter(l => l.contactRef);
+    try {
+      const XLSX = await import("xlsx");
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: "array" });
+      const firstSheet = wb.Sheets[wb.SheetNames[0]];
+      const rows: any[] = XLSX.utils.sheet_to_json(firstSheet, { defval: "" });
 
-      try {
-        const res = await fetch("/api/leads", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ leads: payload })
-        });
-        if (res.ok) {
-          alert(`Imported successfully`);
-          window.location.reload();
-        } else {
-          alert("Import failed. Make sure Ad Set IDs are valid internal IDs.");
-        }
-      } catch (err) {
-        console.error(err);
-        alert("Network error during import");
-      } finally {
-        setImporting(false);
+      if (rows.length === 0) {
+        alert("The uploaded file contains no data rows.");
+        return;
       }
-    };
-    reader.readAsText(file);
+
+      // Detect column keys dynamically
+      const payload = rows.map((row) => {
+        let contactRef = "";
+        let messageText = "";
+        let adSetId = "";
+
+        for (const [key, val] of Object.entries(row)) {
+          const k = key.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+          const v = String(val).trim();
+          if (!v) continue;
+
+          if (k.includes("phone") || k.includes("mobile") || k.includes("contact") || k.includes("customer") || k === "number") {
+            contactRef = v;
+          } else if (k.includes("message") || k.includes("inquiry") || k.includes("text") || k.includes("product") || k.includes("body")) {
+            messageText = v;
+          } else if (k.includes("adset") || k.includes("campaign") || k.includes("ad")) {
+            adSetId = v;
+          }
+        }
+
+        // Fallback for unlabeled/standard positional columns
+        if (!contactRef && Object.values(row)[0]) {
+          contactRef = String(Object.values(row)[0]).trim();
+        }
+        if (!messageText && Object.values(row)[1]) {
+          messageText = String(Object.values(row)[1]).trim();
+        }
+        if (!adSetId && Object.values(row)[2]) {
+          adSetId = String(Object.values(row)[2]).trim();
+        }
+
+        return {
+          contactRef: contactRef || "Unknown",
+          messageText: messageText || null,
+          adSetId: adSetId || undefined
+        };
+      }).filter((l) => l.contactRef && l.contactRef !== "Phone Number");
+
+      if (payload.length === 0) {
+        alert("No valid lead contacts found in the file.");
+        return;
+      }
+
+      const res = await fetch("/api/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leads: payload })
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        alert(`Successfully imported ${json.count || payload.length} lead(s) into ADuniFY!`);
+        window.location.reload();
+      } else {
+        alert("Import failed. Please verify your file structure.");
+      }
+    } catch (err) {
+      console.error("Excel import error:", err);
+      alert("Error parsing file. Please ensure it is a valid .xlsx, .xls, or .csv file.");
+    } finally {
+      setImporting(false);
+      if (e.target) e.target.value = "";
+    }
   };
 
   const getTabClass = (tabName: string) => {
@@ -106,26 +193,49 @@ export default function LeadsClient({ initialLeads, currentTag }: { initialLeads
       <div className="flex justify-between items-end mb-8 border-b border-stone pb-5">
         <div>
           <h1 className="font-serif text-[30px] m-0 mb-1 font-semibold">Lead Tagging</h1>
-          <p className="m-0 text-[13.5px] text-ink-soft">Today's WhatsApp inquiries — tag each one against its ad</p>
+          <p className="m-0 text-[13.5px] text-ink-soft">WhatsApp inquiries & website leads — tag each against campaigns</p>
         </div>
-        <div className="text-[12.5px] border border-stone px-4 py-2 text-ink-soft bg-card rounded-md">
-          {leads.length} leads
+        <div className="flex items-center gap-3">
+          <button
+            onClick={exportToExcel}
+            className="text-[12px] font-semibold border border-stone px-3.5 py-1.5 text-ink-soft hover:text-ink hover:border-stone-dark bg-card rounded-sm transition-colors flex items-center gap-1.5"
+          >
+            <span>↓</span> Export to Excel
+          </button>
+          <div className="text-[12.5px] border border-stone px-4 py-1.5 text-ink-soft bg-card rounded-md font-mono">
+            {leads.length} leads
+          </div>
         </div>
       </div>
 
-      <div className="card-base p-6 mb-7 flex justify-between items-center bg-amber-tint border-[#e3d3a8]">
+      <div className="card-base p-6 mb-7 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-amber-tint border-[#e3d3a8]">
         <div>
-          <h3 className="text-[14px] font-bold mb-1">Bulk Import Leads</h3>
-          <p className="text-[12.5px] text-ink-soft">Upload a CSV of WhatsApp inquiries. Format: Contact Ref, Message Text, Ad Set ID</p>
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="text-[14px] font-bold">Excel &amp; CSV Bulk Lead Import</h3>
+            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-sm bg-amber text-white">XLSX &bull; XLS &bull; CSV</span>
+          </div>
+          <p className="text-[12.5px] text-ink-soft">
+            Upload WhatsApp inquiries directly from Excel. Columns: <strong>Phone Number</strong>, <strong>Customer Inquiry / Product</strong>, and optional <strong>Ad Set</strong>.
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <input 
-            type="file" 
-            accept=".csv" 
-            onChange={handleFileUpload}
-            disabled={importing}
-            className="text-[12.5px] file:mr-4 file:py-2 file:px-4 file:rounded-sm file:border-0 file:text-[12.5px] file:font-semibold file:bg-amber file:text-white hover:file:bg-amber/90 cursor-pointer disabled:opacity-50" 
-          />
+        <div className="flex items-center gap-2.5 shrink-0">
+          <button
+            type="button"
+            onClick={downloadTemplate}
+            className="text-[12px] font-semibold py-2 px-3.5 rounded-sm border border-stone bg-white text-ink hover:bg-stone/10 transition-colors"
+          >
+            Download Excel Template
+          </button>
+          <label className="text-[12px] font-semibold py-2 px-4 rounded-sm bg-amber text-white hover:bg-amber/90 cursor-pointer transition-colors shadow-sm inline-block">
+            {importing ? "Importing..." : "Upload Excel / CSV"}
+            <input 
+              type="file" 
+              accept=".xlsx,.xls,.csv" 
+              onChange={handleFileUpload}
+              disabled={importing}
+              className="hidden" 
+            />
+          </label>
         </div>
       </div>
 
