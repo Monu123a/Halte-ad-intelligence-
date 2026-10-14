@@ -48,9 +48,44 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON in request body" }, { status: 400 });
   }
 
-  // Support batch { leads: [...] }, raw array [...], or single object { ... }
+  // Support batch { leads: [...] }, raw array [...], single object, or Evolution API v2 events
   let rawLeads: any[] = [];
-  if (Array.isArray(body)) {
+  
+  // 2a. Evolution API v2 payload format
+  if (body && (body.event === "messages.upsert" || body.data?.key)) {
+    const data = body.data;
+    const isFromMe = data?.key?.fromMe;
+    if (isFromMe) {
+      return NextResponse.json({ success: true, ignored: true, reason: "Outgoing message from staff" });
+    }
+
+    const remoteJid = String(data?.key?.remoteJid || "");
+    if (remoteJid.includes("status@broadcast") || remoteJid.includes("@g.us")) {
+      return NextResponse.json({ success: true, ignored: true, reason: "Status broadcast or group message" });
+    }
+
+    const cleanPhone = remoteJid.replace(/@.*$/, "");
+    const pushName = data?.pushName ? String(data.pushName).trim() : "";
+    const contactRef = pushName ? `${pushName} (+${cleanPhone})` : (cleanPhone ? `+${cleanPhone}` : "Unknown");
+
+    const text =
+      data?.message?.conversation ||
+      data?.message?.extendedTextMessage?.text ||
+      data?.message?.imageMessage?.caption ||
+      data?.message?.videoMessage?.caption ||
+      "[Media message]";
+
+    const instanceLabel = body.instance ? `[${body.instance}] ` : "";
+    const messageText = `${instanceLabel}${text}`;
+
+    rawLeads = [
+      {
+        contactRef,
+        messageText,
+        adSetId: null
+      }
+    ];
+  } else if (Array.isArray(body)) {
     rawLeads = body;
   } else if (body && Array.isArray(body.leads)) {
     rawLeads = body.leads;
@@ -61,6 +96,7 @@ export async function POST(req: Request) {
   if (rawLeads.length === 0) {
     return NextResponse.json({ error: "Invalid payload: No lead records found" }, { status: 400 });
   }
+
 
   // 3. Pre-fetch ad sets to map incoming IDs (internal ID or platformAdSetId)
   const incomingAdSetIds = Array.from(
