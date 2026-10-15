@@ -83,6 +83,12 @@ export function formatDuration(seconds: number): string {
   return `${mins}m ${rem < 10 ? `0${rem}` : rem}s`;
 }
 
+const analyticsDataCache = new Map<string, { data: any; expiresAt: number }>();
+
+export function invalidateAnalyticsCache() {
+  analyticsDataCache.clear();
+}
+
 export async function getWebsiteAnalyticsData(options: {
   days?: number;
   brand?: string;
@@ -98,6 +104,13 @@ export async function getWebsiteAnalyticsData(options: {
   const page = Math.max(1, options.page || 1);
   const pageSize = options.pageSize || 12;
 
+  const cacheKey = `${days}_${brandFilter || "ALL"}_${page}_${pageSize}`;
+  const now = Date.now();
+  const cached = analyticsDataCache.get(cacheKey);
+  if (cached && now < cached.expiresAt) {
+    return cached.data;
+  }
+
   const whereClause: any = {};
   if (days > 0 && days < 3650) {
     const cutoff = new Date();
@@ -111,8 +124,9 @@ export async function getWebsiteAnalyticsData(options: {
   let rows = await prisma.websiteAnalytics.findMany({
     where: whereClause,
     orderBy: { createdAt: "desc" },
-    take: 15000,
+    take: 6000,
   });
+
 
   // Fallback if date range is narrower than historical records
   if (rows.length === 0 && days < 3650) {
@@ -413,7 +427,7 @@ export async function getWebsiteAnalyticsData(options: {
     };
   });
 
-  return {
+  const finalResult = {
     overview: {
       totalSessions,
       uniqueVisitors,
@@ -444,4 +458,9 @@ export async function getWebsiteAnalyticsData(options: {
     pagedPages,
     totalPagesCount,
   };
+
+  analyticsDataCache.set(cacheKey, { data: finalResult, expiresAt: now + 60000 });
+  return finalResult;
 }
+
+

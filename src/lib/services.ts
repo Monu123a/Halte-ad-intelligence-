@@ -1,18 +1,47 @@
 import prisma from "@/lib/prisma";
-import { generateRecommendations, AdSetStats, SeasonalLookup } from "@/lib/recommendations";
+import { generateRecommendations, AdSetStats, SeasonalLookup, isMessagingAdSet } from "@/lib/recommendations";
+
+// 60-second In-Memory Cache to make page switching instant
+let cacheRecommendations: { data: any; expiresAt: number } | null = null;
+let cacheOverviewStats: { data: any; expiresAt: number } | null = null;
+
+export function invalidateServicesCache() {
+  cacheRecommendations = null;
+  cacheOverviewStats = null;
+}
 
 export async function getDashboardRecommendations() {
-  const adSets = await prisma.adSet.findMany({
-    include: {
-      campaign: { include: { brand: true } },
-      dailyMetrics: true,
-      leads: {
-        where: { tag: { not: "UNTAGGED" } }
-      }
-    }
-  });
+  const now = Date.now();
+  if (cacheRecommendations && now < cacheRecommendations.expiresAt) {
+    return cacheRecommendations.data;
+  }
 
-  const seasonalRules = await prisma.seasonalRule.findMany();
+  const [adSets, seasonalRules] = await Promise.all([
+    prisma.adSet.findMany({
+      select: {
+        id: true,
+        dailyMetrics: {
+          select: { spend: true, clicks: true }
+        },
+        leads: {
+          where: { tag: { not: "UNTAGGED" } },
+          select: { tag: true }
+        },
+        campaign: {
+          select: {
+            products: true,
+            region: true,
+            objective: true,
+            brand: {
+              select: { id: true, isSeasonal: true }
+            }
+          }
+        }
+      }
+    }),
+    prisma.seasonalRule.findMany()
+  ]);
+
   const lookup: SeasonalLookup = {};
   for (const rule of seasonalRules) {
     lookup[rule.product] = {
@@ -23,34 +52,43 @@ export async function getDashboardRecommendations() {
 
   const currentMonth = new Date().getMonth() + 1;
 
-  const stats: AdSetStats[] = adSets.map((adSet) => {
-    const spend = adSet.dailyMetrics.reduce((acc, curr) => acc + Number(curr.spend), 0);
-    const clicks = adSet.dailyMetrics.reduce((acc, curr) => acc + curr.clicks, 0);
-    const genuineLeads = adSet.leads.filter(l => l.tag === "GENUINE" || l.tag === "CONVERTED").length;
-    const convertedLeads = adSet.leads.filter(l => l.tag === "CONVERTED").length;
-    const totalTaggedLeads = adSet.leads.length;
-    
-    return {
-      adSetId: adSet.id,
-      spend,
-      clicks,
-      genuineLeads,
-      convertedLeads,
-      totalTaggedLeads,
-      brandId: adSet.campaign.brand?.id || "unmapped",
-      isSeasonalBrand: adSet.campaign.brand?.isSeasonal || false,
-      products: adSet.campaign.products,
-      region: adSet.campaign.region || undefined,
-      objective: adSet.campaign.objective,
-    };
-  }).filter(s => s.brandId !== "unmapped");
+  const stats: AdSetStats[] = adSets
+    .filter(a => a.campaign?.brand?.id)
+    .map((adSet) => {
+      const spend = adSet.dailyMetrics.reduce((acc, curr) => acc + Number(curr.spend), 0);
+      const clicks = adSet.dailyMetrics.reduce((acc, curr) => acc + curr.clicks, 0);
+      const genuineLeads = adSet.leads.filter(l => l.tag === "GENUINE" || l.tag === "CONVERTED").length;
+      const convertedLeads = adSet.leads.filter(l => l.tag === "CONVERTED").length;
+      const totalTaggedLeads = adSet.leads.length;
 
-  return generateRecommendations(stats, lookup, currentMonth);
+      return {
+        adSetId: adSet.id,
+        spend,
+        clicks,
+        genuineLeads,
+        convertedLeads,
+        totalTaggedLeads,
+        brandId: adSet.campaign?.brand?.id || "unmapped",
+        isSeasonalBrand: adSet.campaign?.brand?.isSeasonal || false,
+        products: adSet.campaign?.products || [],
+        region: adSet.campaign?.region || undefined,
+        objective: adSet.campaign?.objective || undefined,
+      };
+    }).filter(s => s.brandId !== "unmapped");
+
+
+
+  const result = generateRecommendations(stats, lookup, currentMonth);
+  cacheRecommendations = { data: result, expiresAt: now + 60000 };
+  return result;
 }
 
-import { isMessagingAdSet } from "@/lib/recommendations";
-
 export async function getOverviewStats() {
+  const now = Date.now();
+  if (cacheOverviewStats && now < cacheOverviewStats.expiresAt) {
+    return cacheOverviewStats.data;
+  }
+
   const aggMetrics = await prisma.dailyMetric.groupBy({
     by: ['adSetId'],
     _sum: { spend: true }
@@ -58,7 +96,12 @@ export async function getOverviewStats() {
 
   const adSets = await prisma.adSet.findMany({
     where: { id: { in: aggMetrics.map(m => m.adSetId) } },
-    include: { campaign: { select: { objective: true } } }
+    select: {
+      id: true,
+      optimizationGoal: true,
+      destinationType: true,
+      campaign: { select: { objective: true } }
+    }
   });
 
   const adSetMap = new Map(adSets.map(a => [a.id, a]));
@@ -87,34 +130,34 @@ export async function getOverviewStats() {
     }
   }
 
-  // Cost per genuine lead = spend of messaging ad sets ÷ genuine and converted leads linked to those same ad sets.
   const msgAdSetIdsArray = Array.from(messagingAdSetIds);
-  const genuineLeadsCount = await prisma.lead.count({ 
-    where: { 
-      tag: { in: ["GENUINE", "CONVERTED"] },
-      adSetId: { in: msgAdSetIdsArray }
-    } 
-  });
 
-  const otherGenuineLeadsCount = await prisma.lead.count({
-    where: {
-      tag: { in: ["GENUINE", "CONVERTED"] },
-      adSetId: { notIn: msgAdSetIdsArray }
-    }
-  });
-  
-  const spamLeadsCount = await prisma.lead.count({ where: { tag: "SPAM" } });
-  const totalTaggedCount = await prisma.lead.count({ where: { tag: { not: "UNTAGGED" } } });
-  
+  // Run lead counts and sync check in parallel
+  const [genuineLeadsCount, otherGenuineLeadsCount, spamLeadsCount, totalTaggedCount, latestSync] = await Promise.all([
+    prisma.lead.count({ 
+      where: { 
+        tag: { in: ["GENUINE", "CONVERTED"] },
+        adSetId: { in: msgAdSetIdsArray }
+      } 
+    }),
+    prisma.lead.count({
+      where: {
+        tag: { in: ["GENUINE", "CONVERTED"] },
+        adSetId: { notIn: msgAdSetIdsArray }
+      }
+    }),
+    prisma.lead.count({ where: { tag: "SPAM" } }),
+    prisma.lead.count({ where: { tag: { not: "UNTAGGED" } } }),
+    prisma.syncLog.findFirst({
+      where: { status: "success" },
+      orderBy: { finishedAt: "desc" }
+    })
+  ]);
+
   const cpgl = genuineLeadsCount > 0 ? (messagingSpend / genuineLeadsCount).toFixed(0) : 0;
   const spamRate = totalTaggedCount > 0 ? Math.round((spamLeadsCount / totalTaggedCount) * 100) : 0;
-  
-  const latestSync = await prisma.syncLog.findFirst({
-    where: { status: "success" },
-    orderBy: { finishedAt: "desc" }
-  });
 
-  return {
+  const result = {
     messagingSpend,
     otherSpend,
     genuineLeadsCount,
@@ -124,4 +167,8 @@ export async function getOverviewStats() {
     latestSync,
     messagingAdSetIds: msgAdSetIdsArray
   };
+
+  cacheOverviewStats = { data: result, expiresAt: now + 60000 };
+  return result;
 }
+

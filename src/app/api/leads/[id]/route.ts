@@ -22,5 +22,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
   });
 
+  try {
+    const { invalidateServicesCache } = await import("@/lib/services");
+    invalidateServicesCache();
+  } catch {}
+
   return NextResponse.json({ lead });
+
 }

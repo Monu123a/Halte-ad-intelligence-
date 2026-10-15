@@ -20,17 +20,29 @@ export default async function LeadsPage({ searchParams }: { searchParams: { tag?
       ]
     },
     orderBy: { createdAt: "desc" },
-    take: 500, // Reasonable limit for MVP
-    include: {
+    take: 250,
+    select: {
+      id: true,
+      contactRef: true,
+      messageText: true,
+      tag: true,
+      createdAt: true,
       adSet: {
-        include: {
+        select: {
+          id: true,
+          name: true,
           campaign: {
-            include: { brand: true }
+            select: {
+              brand: {
+                select: { name: true }
+              }
+            }
           }
         }
       }
     }
   });
+
 
   return <LeadsClient initialLeads={leads} currentTag={currentTag} />;
 }

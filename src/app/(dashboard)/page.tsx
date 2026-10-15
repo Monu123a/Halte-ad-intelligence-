@@ -12,16 +12,18 @@ export default function OverviewPage({ searchParams }: { searchParams: { page?: 
 }
 
 async function OverviewContent({ searchParams }: { searchParams: { page?: string, filter?: string } }) {
-  let recommendations = await getDashboardRecommendations();
-  
-  const filter = searchParams.filter;
-  if (filter && filter !== "ALL") {
-    recommendations = recommendations.filter(r => r.action === filter);
-  }
+  const [recommendationsRaw, stats, { overview: webOverview }, brands] = await Promise.all([
+    getDashboardRecommendations(),
+    getOverviewStats(),
+    getWebsiteAnalyticsData({ days: 30 }),
+    prisma.brand.findMany()
+  ]);
 
-  const stats = await getOverviewStats();
-  const { overview: webOverview } = await getWebsiteAnalyticsData({ days: 30 });
-  
+  const filter = searchParams.filter;
+  const recommendations = filter && filter !== "ALL" 
+    ? recommendationsRaw.filter((r: any) => r.action === filter)
+    : recommendationsRaw;
+
   const currentMonthName = new Date().toLocaleString("en-US", { month: "long", year: "numeric" });
   
   const formatSpend = (spend: number) => {
@@ -30,25 +32,30 @@ async function OverviewContent({ searchParams }: { searchParams: { page?: string
     return `₹${Math.round(spend)}`;
   };
 
-  const brands = await prisma.brand.findMany();
   const brandMap = new Map(brands.map(b => [b.id, b]));
   
   const page = parseInt(searchParams.page || "1", 10);
   const pageSize = 15;
   const totalPages = Math.ceil(recommendations.length / pageSize);
   const pagedRecommendations = recommendations.slice((page - 1) * pageSize, page * pageSize);
+  const pagedAdSetIds = pagedRecommendations.map((r: any) => r.adSetId);
 
-  const adSets = await prisma.adSet.findMany({
-    where: { id: { in: pagedRecommendations.map(r => r.adSetId) } },
-    include: { campaign: { include: { adConnection: true } } }
-  });
+  const [adSets, metricsAgg] = await Promise.all([
+
+    prisma.adSet.findMany({
+      where: { id: { in: pagedAdSetIds } },
+      include: { campaign: { include: { adConnection: true } } }
+    }),
+    prisma.dailyMetric.groupBy({
+      by: ['adSetId'],
+      where: { adSetId: { in: pagedAdSetIds } },
+      _sum: { spend: true }
+    })
+  ]);
+
   const adSetMap = new Map(adSets.map(a => [a.id, a]));
-  
-  const metricsAgg = await prisma.dailyMetric.groupBy({
-    by: ['adSetId'],
-    _sum: { spend: true }
-  });
   const spendMap = new Map(metricsAgg.map(m => [m.adSetId, Number(m._sum.spend || 0)]));
+
 
   const getBrandTagClass = (brandName: string) => {
     if (brandName === "Gardena") return "bg-green text-white";
@@ -209,8 +216,9 @@ async function OverviewContent({ searchParams }: { searchParams: { page?: string
               </tr>
             </thead>
             <tbody>
-              {pagedRecommendations.map((rec, i) => {
+              {pagedRecommendations.map((rec: any, i: number) => {
                 const brand = brandMap.get(rec.brandId);
+
                 const adSet = adSetMap.get(rec.adSetId);
                 const spend = spendMap.get(rec.adSetId) || 0;
                 const isLast = i === pagedRecommendations.length - 1;
