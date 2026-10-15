@@ -4,30 +4,30 @@ import MonthSelector from "./MonthSelector";
 
 export const dynamic = "force-dynamic";
 
-export default async function BrandReportPage({ 
-  params,
-  searchParams
-}: { 
-  params: { brandId: string },
-  searchParams: { month?: string }
-}) {
-  const brandName = params.brandId;
-  
-  const allBrands = await prisma.brand.findMany();
+// 60-second in-memory cache for instant brand page transitions
+const brandReportCache = new Map<string, { data: any; expiresAt: number }>();
+
+async function getBrandData(brandName: string, currentMonthStr: string) {
+  const cacheKey = `${brandName}_${currentMonthStr}`;
+  const now = Date.now();
+  const cached = brandReportCache.get(cacheKey);
+  if (cached && now < cached.expiresAt) {
+    return cached.data;
+  }
+
+  const allBrands = await prisma.brand.findMany({
+    select: { id: true, name: true, pageId: true, isSeasonal: true, colorToken: true }
+  });
   const currentBrand = allBrands.find(b => b.name === brandName);
-  
   const isSeasonal = currentBrand?.isSeasonal || false;
-  
-  // Parse month from searchParams (YYYY-MM), default to current month
-  const currentMonthStr = searchParams.month || new Date().toISOString().substring(0, 7);
+
   const [year, month] = currentMonthStr.split("-").map(Number);
-  
   const startDate = new Date(year, month - 1, 1);
   const endDate = new Date(year, month, 0, 23, 59, 59, 999);
-  
+
   let totalSpend = 0;
   const spendByRegion: Record<string, number> = {};
-  
+
   if (currentBrand) {
     const agg = await prisma.dailyMetric.groupBy({
       by: ['adSetId'],
@@ -44,12 +44,17 @@ export default async function BrandReportPage({
     const adSetIds = agg.map(a => a.adSetId);
     const adSets = await prisma.adSet.findMany({
       where: { id: { in: adSetIds } },
-      include: { campaign: true }
+      select: {
+        id: true,
+        campaign: {
+          select: { region: true }
+        }
+      }
     });
 
     const regionMap: Record<string, string> = {};
     for (const adSet of adSets) {
-      regionMap[adSet.id] = adSet.campaign.region || "Unknown";
+      regionMap[adSet.id] = adSet.campaign?.region || "Unknown";
     }
 
     for (const a of agg) {
@@ -59,6 +64,22 @@ export default async function BrandReportPage({
       totalSpend += s;
     }
   }
+
+  const result = { currentBrand, isSeasonal, totalSpend, spendByRegion };
+  brandReportCache.set(cacheKey, { data: result, expiresAt: now + 60000 });
+  return result;
+}
+
+export default async function BrandReportPage({ 
+  params,
+  searchParams
+}: { 
+  params: { brandId: string },
+  searchParams: { month?: string }
+}) {
+  const brandName = params.brandId;
+  const currentMonthStr = searchParams.month || new Date().toISOString().substring(0, 7);
+  const { currentBrand, isSeasonal, totalSpend, spendByRegion } = await getBrandData(brandName, currentMonthStr);
 
   const circumference = 2 * Math.PI * 62; // ~389.55
   const segments: any[] = [];

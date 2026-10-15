@@ -16,14 +16,12 @@ export async function getSession(): Promise<SessionUser | null> {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as SessionUser;
-    // Optional: Validate user still exists in DB
-    const user = await prisma.user.findUnique({ where: { id: decoded.id } });
-    if (!user) return null;
     return decoded;
   } catch (e) {
     return null;
   }
 }
+
 
 export function setSessionToken(user: SessionUser) {
   const token = jwt.sign(

@@ -163,6 +163,11 @@ export async function POST(req: Request) {
     })
   });
 
+  try {
+    const { invalidateServicesCache } = await import("@/lib/services");
+    invalidateServicesCache();
+  } catch {}
+
   return NextResponse.json({
     success: true,
     inserted: created.count,

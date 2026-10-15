@@ -8,13 +8,13 @@ export const dynamic = "force-dynamic";
 export default async function ConnectionsPage() {
   const session = await getSession();
   const isAdmin = session?.role === "ADMIN";
-  const connections = await prisma.adConnection.findMany();
 
-  const unmapped = await prisma.campaign.findMany({
-    where: { brandPageId: null }
-  });
-  
-  const brands = await prisma.brand.findMany();
+  const [connections, unmapped, brands] = await Promise.all([
+    prisma.adConnection.findMany(),
+    prisma.campaign.findMany({ where: { brandPageId: null } }),
+    prisma.brand.findMany()
+  ]);
+
   // Quick hardcoded list of valid products from SeasonalRule
   const products = ["Snow Chains", "BBQ", "Garden Machinery", "Waterproof Tape", "Sprinklers", "Leaf Blowers", "Firepit", "Fogging Machine", "Gensets", "Chainsaw", "Lawn Mowers", "Brush Cutters", "Trimmers", "Pole Pruners", "Tillers", "Portable Sprayers", "Hose Reels", "Mounting Tape", "Cord Organiser", "Garden Pruners"];
 

@@ -1,4 +1,4 @@
-import prisma from "@/lib/prisma";
+import { getLeadsData } from "@/lib/services";
 import LeadsClient from "./LeadsClient";
 
 export const dynamic = "force-dynamic";
@@ -7,42 +7,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: { tag?
   const currentTag = searchParams.tag || "UNTAGGED";
   const query = searchParams.q || "";
   
-  const leads = await prisma.lead.findMany({
-    where: {
-      AND: [
-        currentTag === "ALL" ? {} : { tag: currentTag as any },
-        query ? {
-          OR: [
-            { contactRef: { contains: query, mode: 'insensitive' } },
-            { messageText: { contains: query, mode: 'insensitive' } }
-          ]
-        } : {}
-      ]
-    },
-    orderBy: { createdAt: "desc" },
-    take: 250,
-    select: {
-      id: true,
-      contactRef: true,
-      messageText: true,
-      tag: true,
-      createdAt: true,
-      adSet: {
-        select: {
-          id: true,
-          name: true,
-          campaign: {
-            select: {
-              brand: {
-                select: { name: true }
-              }
-            }
-          }
-        }
-      }
-    }
-  });
-
+  const leads = await getLeadsData(currentTag, query);
 
   return <LeadsClient initialLeads={leads} currentTag={currentTag} />;
 }

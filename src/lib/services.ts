@@ -4,10 +4,60 @@ import { generateRecommendations, AdSetStats, SeasonalLookup, isMessagingAdSet }
 // 60-second In-Memory Cache to make page switching instant
 let cacheRecommendations: { data: any; expiresAt: number } | null = null;
 let cacheOverviewStats: { data: any; expiresAt: number } | null = null;
+const cacheLeads = new Map<string, { data: any; expiresAt: number }>();
 
 export function invalidateServicesCache() {
   cacheRecommendations = null;
   cacheOverviewStats = null;
+  cacheLeads.clear();
+}
+
+export async function getLeadsData(currentTag: string = "UNTAGGED", query: string = "") {
+  const cacheKey = `${currentTag}_${query.trim().toLowerCase()}`;
+  const now = Date.now();
+  const cached = cacheLeads.get(cacheKey);
+  if (cached && now < cached.expiresAt) {
+    return cached.data;
+  }
+
+  const leads = await prisma.lead.findMany({
+    where: {
+      AND: [
+        currentTag === "ALL" ? {} : { tag: currentTag as any },
+        query ? {
+          OR: [
+            { contactRef: { contains: query, mode: 'insensitive' } },
+            { messageText: { contains: query, mode: 'insensitive' } }
+          ]
+        } : {}
+      ]
+    },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+    select: {
+      id: true,
+      contactRef: true,
+      messageText: true,
+      tag: true,
+      createdAt: true,
+      adSet: {
+        select: {
+          id: true,
+          name: true,
+          campaign: {
+            select: {
+              brand: {
+                select: { name: true }
+              }
+            }
+          }
+        }
+      }
+    }
+  });
+
+  cacheLeads.set(cacheKey, { data: leads, expiresAt: now + 30000 });
+  return leads;
 }
 
 export async function getDashboardRecommendations() {
