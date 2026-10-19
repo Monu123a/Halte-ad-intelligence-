@@ -1,6 +1,6 @@
 import prisma from "@/lib/prisma";
 import { MetaAdsConnector } from "@/lib/connector/meta";
-import { decrypt } from "@/lib/crypto";
+import { decrypt, encrypt } from "@/lib/crypto";
 
 const connector = new MetaAdsConnector();
 
@@ -23,8 +23,29 @@ export async function runMetaSync(connectionId: string) {
   });
 
   try {
-    const token = decrypt(metaConn.accessTokenEnc);
+    let token = decrypt(metaConn.accessTokenEnc);
     const adAccountId = metaConn.platformAccountId;
+
+    // Proactively extend the 60-day long-lived token if within 20 days of expiring
+    if (metaConn.tokenExpiresAt) {
+      const daysUntilExpiry = (new Date(metaConn.tokenExpiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+      if (daysUntilExpiry < 20) {
+        try {
+          const refreshed = await connector.refreshToken(token);
+          token = refreshed.accessToken;
+          await prisma.adConnection.update({
+            where: { id: metaConn.id },
+            data: {
+              accessTokenEnc: encrypt(refreshed.accessToken),
+              tokenExpiresAt: refreshed.expiresAt
+            }
+          });
+          console.log(`[Meta Sync] Successfully renewed 60-day token for ${metaConn.label || metaConn.platformAccountId}`);
+        } catch (refreshErr) {
+          console.warn(`[Meta Sync] Proactive token renewal note:`, refreshErr);
+        }
+      }
+    }
     
     const campaigns = await connector.fetchCampaigns(token, adAccountId);
     const adSets = await connector.fetchAdSets(token, adAccountId);
