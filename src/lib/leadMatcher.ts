@@ -1,9 +1,13 @@
+import { resolvePhoneState } from "@/lib/geoIntelligence";
+
 export interface DetectedLeadMetadata {
   platform: "Facebook Ad" | "Instagram Ad" | "Halte.in Web" | "WhatsApp Direct";
   brand: "BKR" | "Gardena" | "Gorilla" | "Velcro" | "Halte Complete" | null;
   product: string | null;
   phoneInstance: string | null;
+  state: string | null;
 }
+
 
 const PRODUCT_DEFINITIONS: Array<{ name: string; keywords: string[] }> = [
   { name: "Lawn Mowers", keywords: ["lawn mower", "mower", "grass cutting", "grass cutter", "lg0862"] },
@@ -27,8 +31,12 @@ const PRODUCT_DEFINITIONS: Array<{ name: string; keywords: string[] }> = [
   { name: "Portable Sprayers", keywords: ["sprayer", "pressure sprayer"] }
 ];
 
-export function extractLeadMetadata(text: string | null | undefined): DetectedLeadMetadata {
+export function extractLeadMetadata(
+  text: string | null | undefined,
+  contactRef?: string | null | undefined
+): DetectedLeadMetadata {
   const lower = (text || "").toLowerCase();
+
 
   // 1. Phone Instance
   let phoneInstance: string | null = null;
@@ -87,9 +95,11 @@ export function extractLeadMetadata(text: string | null | undefined): DetectedLe
     platform,
     brand,
     product,
-    phoneInstance
+    phoneInstance,
+    state: resolvePhoneState(contactRef)
   };
 }
+
 
 export function matchLeadToAdSet(
   text: string | null | undefined,

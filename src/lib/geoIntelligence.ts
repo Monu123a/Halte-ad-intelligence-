@@ -562,3 +562,14 @@ export async function getGeographicalReport(timeRange: "all" | "90d" | "30d" = "
     states
   };
 }
+
+export function resolvePhoneState(contactRef: string | null | undefined): string | null {
+  if (!contactRef) return null;
+  const clean = contactRef.replace(/\s+/g, "");
+  const match = clean.match(/(?:\+91|91|^)([6-9]\d{3})/);
+  if (match && PHONE_PREFIX_TO_STATE[match[1]]) {
+    return PHONE_PREFIX_TO_STATE[match[1]];
+  }
+  return null;
+}
+

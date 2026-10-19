@@ -6,24 +6,98 @@ import Link from "next/link";
 
 import { extractLeadMetadata } from "@/lib/leadMatcher";
 
+interface UserItem {
+  id: string;
+  email: string;
+  role: "ADMIN" | "ANALYST" | "LEAD_TAGGER";
+  createdAt: string | Date;
+}
+
 export default function LeadsClient({ 
   initialLeads, 
   currentTag, 
-  availableAdSets = [] 
+  availableAdSets = [],
+  isAdmin = false,
+  initialUsers = [],
+  currentUserId
 }: { 
   initialLeads: any[]; 
   currentTag: string; 
   availableAdSets?: any[]; 
+  isAdmin?: boolean;
+  initialUsers?: UserItem[];
+  currentUserId?: string;
 }) {
   const [leads, setLeads] = useState(initialLeads);
   const [importing, setImporting] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const router = useRouter();
 
+  // Team permission state for WhatsApp lead tagging
+  const [users, setUsers] = useState<UserItem[]>(initialUsers);
+  const [showTeamModal, setShowTeamModal] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newRole, setNewRole] = useState<"LEAD_TAGGER" | "ANALYST" | "ADMIN">("LEAD_TAGGER");
+  const [teamLoading, setTeamLoading] = useState(false);
+  const [teamError, setTeamError] = useState("");
+  const [teamSuccess, setTeamSuccess] = useState("");
+
   // Sync state when URL/props change
   useEffect(() => {
     setLeads(initialLeads);
   }, [initialLeads]);
+
+  useEffect(() => {
+    if (initialUsers) setUsers(initialUsers);
+  }, [initialUsers]);
+
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setTeamError("");
+    setTeamSuccess("");
+    setTeamLoading(true);
+
+    try {
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: newEmail, password: newPassword, role: newRole })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to create user");
+      }
+
+      setUsers([data.user, ...users]);
+      setNewEmail("");
+      setNewPassword("");
+      setNewRole("LEAD_TAGGER");
+      setTeamSuccess(`Access granted to ${data.user.email} (${data.user.role === "LEAD_TAGGER" ? "Lead Tagger" : data.user.role})!`);
+    } catch (err: any) {
+      setTeamError(err.message || "Failed to create user");
+    } finally {
+      setTeamLoading(false);
+    }
+  };
+
+  const handleDeleteUser = async (id: string, userEmail: string) => {
+    if (!confirm(`Are you sure you want to revoke lead tagging access for "${userEmail}"?`)) return;
+
+    try {
+      const res = await fetch(`/api/users/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        setUsers(users.filter(u => u.id !== id));
+      } else {
+        const data = await res.json();
+        alert(data.error || "Failed to revoke access");
+      }
+    } catch (err) {
+      alert("Error revoking access");
+    }
+  };
+
 
   const handleTag = async (leadId: string, tag: string) => {
     try {
@@ -219,9 +293,21 @@ export default function LeadsClient({
       <div className="flex justify-between items-end mb-8 border-b border-stone pb-5">
         <div>
           <h1 className="font-serif text-[30px] m-0 mb-1 font-semibold">Lead Tagging</h1>
-          <p className="m-0 text-[13.5px] text-ink-soft">WhatsApp inquiries & website leads — tag each against campaigns</p>
+          <p className="m-0 text-[13.5px] text-ink-soft">WhatsApp inquiries &amp; website leads — tag each against campaigns</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
+          {isAdmin && (
+            <button
+              onClick={() => setShowTeamModal(true)}
+              className="text-[12px] font-semibold border border-stone px-3.5 py-1.5 text-ink hover:text-green hover:border-green/50 bg-card rounded-sm transition-colors flex items-center gap-1.5"
+            >
+              <span>👥</span>
+              <span>Team Tagging Access</span>
+              <span className="text-[10px] bg-green-tint text-green px-1.5 py-0.2 rounded font-bold">
+                {users.filter(u => u.role === "LEAD_TAGGER").length} Taggers
+              </span>
+            </button>
+          )}
           <button
             onClick={exportToExcel}
             className="text-[12px] font-semibold border border-stone px-3.5 py-1.5 text-ink-soft hover:text-ink hover:border-stone-dark bg-card rounded-sm transition-colors flex items-center gap-1.5"
@@ -233,6 +319,7 @@ export default function LeadsClient({
           </div>
         </div>
       </div>
+
 
       <div className="card-base p-6 mb-7 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-amber-tint border-[#e3d3a8]">
         <div>
@@ -294,7 +381,7 @@ export default function LeadsClient({
           </div>
         )}
         {filteredLeads.map(lead => {
-          const meta = extractLeadMetadata(lead.messageText);
+          const meta = extractLeadMetadata(lead.messageText, lead.contactRef);
           const brandName = lead.adSet?.campaign?.brand?.name || meta.brand || "Unknown Brand";
           const adName = lead.adSet?.name;
           const time = new Date(lead.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -339,10 +426,18 @@ export default function LeadsClient({
                     </span>
                   )}
 
+                  {/* Regional Telecom State Badge */}
+                  {meta.state && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                      <span>📍</span> {meta.state}
+                    </span>
+                  )}
+
                   {/* Brand Badge */}
                   <span className="font-semibold text-ink px-1.5 py-0.5 rounded bg-card border border-stone text-[11px]">
                     {brandName}
                   </span>
+
 
                   {/* Detected Product */}
                   {meta.product && (
@@ -406,6 +501,145 @@ export default function LeadsClient({
           );
         })}
       </div>
+
+      {/* Team Tagging Access Modal */}
+      {showTeamModal && (
+        <div className="fixed inset-0 bg-ink/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-card border border-stone rounded-md max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto space-y-6">
+            <div className="flex justify-between items-start border-b border-stone pb-4">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-lg">👥</span>
+                  <h3 className="font-serif text-[22px] font-semibold text-ink m-0">
+                    Team Permissions for WhatsApp Lead Tagging
+                  </h3>
+                </div>
+                <p className="text-[12.5px] text-ink-soft m-0">
+                  Grant permission to team members to review and tag incoming WhatsApp leads. Users with the <b>Lead Tagger</b> role are restricted solely to this page — financial spend, ad accounts, and analytics are strictly locked.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowTeamModal(false);
+                  setTeamError("");
+                  setTeamSuccess("");
+                }}
+                className="text-stone-dark hover:text-ink text-lg p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Add New Member Form */}
+            <form onSubmit={handleCreateUser} className="bg-[#FAF9F6] border border-stone p-4 rounded-md space-y-3">
+              <div className="text-[12px] font-bold uppercase tracking-wider text-ink-soft flex items-center gap-1.5">
+                <span>+</span> Add Team Member with Tagging Access
+              </div>
+
+              {teamError && (
+                <div className="p-2.5 bg-rust-tint text-rust border border-rust/20 rounded text-[12px]">
+                  {teamError}
+                </div>
+              )}
+              {teamSuccess && (
+                <div className="p-2.5 bg-green-tint text-green border border-green/20 rounded text-[12px]">
+                  {teamSuccess}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-ink-soft mb-1">Email Address</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="e.g. tagger@halte.in"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    className="w-full text-[12px] p-2 bg-card border border-stone rounded outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-ink-soft mb-1">Password</label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="Min 6 characters"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full text-[12px] p-2 bg-card border border-stone rounded outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-ink-soft mb-1">Permission Role</label>
+                  <select
+                    value={newRole}
+                    onChange={(e) => setNewRole(e.target.value as any)}
+                    className="w-full text-[12px] p-2 bg-card border border-stone rounded outline-none font-medium"
+                  >
+                    <option value="LEAD_TAGGER">Lead Tagger (Tagging Only 🔒)</option>
+                    <option value="ANALYST">Analyst (View Reports &amp; Tag)</option>
+                    <option value="ADMIN">Admin (Full Access)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-1">
+                <button
+                  type="submit"
+                  disabled={teamLoading}
+                  className="bg-ink text-white px-4 py-2 rounded text-[12px] font-semibold hover:bg-ink/90 transition-colors disabled:opacity-50"
+                >
+                  {teamLoading ? "Granting Access..." : "Grant Tagging Access"}
+                </button>
+              </div>
+            </form>
+
+            {/* Active Team Members List */}
+            <div>
+              <div className="text-[12px] font-bold uppercase tracking-wider text-ink-soft mb-2">
+                Active Team Members ({users.length})
+              </div>
+              <div className="border border-stone rounded-md divide-y divide-stone bg-card overflow-hidden">
+                {users.map((u) => (
+                  <div key={u.id} className="p-3 flex justify-between items-center text-[12.5px]">
+                    <div>
+                      <span className="font-semibold text-ink">{u.email}</span>
+                      {u.id === currentUserId && (
+                        <span className="ml-1.5 text-[10px] text-stone-dark font-medium">(You)</span>
+                      )}
+                      <div className="text-[11px] text-ink-soft mt-0.5">
+                        Added on {new Date(u.createdAt).toLocaleDateString()}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className={`text-[10.5px] font-bold uppercase px-2 py-0.5 rounded border ${
+                        u.role === "LEAD_TAGGER"
+                          ? "bg-amber-tint text-amber border-amber/30"
+                          : u.role === "ADMIN"
+                          ? "bg-green-tint text-green border-green/30"
+                          : "bg-slate-tint text-slate border-slate/30"
+                      }`}>
+                        {u.role === "LEAD_TAGGER" ? "Lead Tagger" : u.role}
+                      </span>
+
+                      {u.id !== currentUserId && (
+                        <button
+                          onClick={() => handleDeleteUser(u.id, u.email)}
+                          className="text-rust hover:underline text-[11.5px] font-medium"
+                        >
+                          Revoke
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
