@@ -136,6 +136,7 @@ export default async function BrandReportPage({
     if (tabName === "BKR") return `${base} bg-amber border-amber text-white`;
     if (tabName === "Gorilla") return `${base} bg-slate border-slate text-white`;
     if (tabName === "Velcro") return `${base} bg-rust border-rust text-white`;
+    if (tabName === "Halte All") return `${base} bg-ink border-ink text-white`;
     
     return base;
   };
@@ -150,12 +151,14 @@ export default async function BrandReportPage({
         <MonthSelector currentMonth={currentMonthStr} brandId={brandName} />
       </div>
 
-      <div className="flex gap-2.5 mb-7">
+      <div className="flex flex-wrap gap-2.5 mb-7">
         <Link href={`/brand/Gardena?month=${currentMonthStr}`} className={getTabClass("Gardena")}>Gardena</Link>
         <Link href={`/brand/BKR?month=${currentMonthStr}`} className={getTabClass("BKR")}>BKR</Link>
         <Link href={`/brand/Gorilla?month=${currentMonthStr}`} className={getTabClass("Gorilla")}>Gorilla</Link>
         <Link href={`/brand/Velcro?month=${currentMonthStr}`} className={getTabClass("Velcro")}>Velcro</Link>
+        <Link href={`/brand/Halte%20All?month=${currentMonthStr}`} className={getTabClass("Halte All")}>Halte All</Link>
       </div>
+
 
       {isSeasonal && (
         <div className="flex gap-4 items-start bg-amber-tint border border-[#e3d3a8] p-5 mb-[1px] rounded-t-md">

@@ -133,8 +133,14 @@ export async function runMetaSync(connectionId: string) {
       }
 
       if (!brandPageId) {
-        unmatchedCampaigns.push(camp.id);
+        const halteAll = allBrands.find(b => b.name === "Halte All" || b.name === "Halte Complete" || b.name === "Halte");
+        if (halteAll) {
+          brandPageId = halteAll.pageId;
+        } else {
+          unmatchedCampaigns.push(camp.id);
+        }
       }
+
 
       let detectedFormat = "Unknown";
       if (fullText.includes("reel")) detectedFormat = "Reel";

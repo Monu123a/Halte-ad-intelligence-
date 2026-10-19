@@ -2,11 +2,12 @@ import { resolvePhoneState } from "@/lib/geoIntelligence";
 
 export interface DetectedLeadMetadata {
   platform: "Facebook Ad" | "Instagram Ad" | "Halte.in Web" | "WhatsApp Direct";
-  brand: "BKR" | "Gardena" | "Gorilla" | "Velcro" | "Halte Complete" | null;
+  brand: "BKR" | "Gardena" | "Gorilla" | "Velcro" | "Halte All" | "Halte Complete" | null;
   product: string | null;
   phoneInstance: string | null;
   state: string | null;
 }
+
 
 
 const PRODUCT_DEFINITIONS: Array<{ name: string; keywords: string[] }> = [
@@ -66,7 +67,7 @@ export function extractLeadMetadata(
   } else if (lower.includes("velcro")) {
     brand = "Velcro";
   } else if (lower.includes("halte")) {
-    brand = "Halte Complete";
+    brand = "Halte All";
   }
 
   // 4. Product
@@ -90,6 +91,12 @@ export function extractLeadMetadata(
       brand = "Velcro";
     }
   }
+
+  // Fallback to Halte All if no specific brand was detected
+  if (!brand) {
+    brand = "Halte All";
+  }
+
 
   return {
     platform,
