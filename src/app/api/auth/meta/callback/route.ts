@@ -12,6 +12,13 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
+  const error = url.searchParams.get("error");
+  const errorDescription = url.searchParams.get("error_description");
+
+  if (error) {
+    console.error("Meta OAuth error:", error, errorDescription);
+    return NextResponse.redirect(new URL(`/connections?error=${encodeURIComponent(errorDescription || error)}`, req.url));
+  }
 
   if (!code) {
     return NextResponse.redirect(new URL("/connections?error=NoCode", req.url));
@@ -21,7 +28,7 @@ export async function GET(req: Request) {
   const protocol = host.includes("localhost") ? "http" : "https";
   const dynamicRedirectUri = `${protocol}://${host}/api/auth/meta/callback`;
 
-  const connector = new MetaAdsConnector(process.env.META_REDIRECT_URI || dynamicRedirectUri);
+  const connector = new MetaAdsConnector(dynamicRedirectUri);
   try {
     const { accessToken, expiresAt } = await connector.connect(code);
     const encryptedToken = encrypt(accessToken);

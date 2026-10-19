@@ -2,12 +2,27 @@ import { AdPlatformConnector, DateRange, AdAccount, RawCampaign, RawAdSet, RawMe
 
 export class MetaAdsConnector implements AdPlatformConnector {
   platformId = "meta_ads";
-  private appId = process.env.META_APP_ID || "";
-  private appSecret = process.env.META_APP_SECRET || "";
+  private appId = (process.env.META_APP_ID || "").replace(/['"]/g, "").trim();
+  private appSecret = (process.env.META_APP_SECRET || "").replace(/['"]/g, "").trim();
   private redirectUri: string;
 
   constructor(customRedirectUri?: string) {
-    this.redirectUri = customRedirectUri || process.env.META_REDIRECT_URI || "https://halte-ad-intelligence.vercel.app/api/auth/meta/callback";
+    const envUri = (process.env.META_REDIRECT_URI || "").trim();
+    if (customRedirectUri && !customRedirectUri.includes("localhost")) {
+      this.redirectUri = customRedirectUri;
+    } else if (envUri && !envUri.includes("localhost")) {
+      this.redirectUri = envUri;
+    } else {
+      this.redirectUri = customRedirectUri || envUri || "https://halte-ad-intelligence.vercel.app/api/auth/meta/callback";
+    }
+  }
+
+  getAppId() {
+    return this.appId;
+  }
+
+  getRedirectUri() {
+    return this.redirectUri;
   }
 
   getAuthUrl(state: string) {

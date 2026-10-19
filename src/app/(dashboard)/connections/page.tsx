@@ -7,7 +7,11 @@ import { TeamManagement } from "@/components/TeamManagement";
 
 export const dynamic = "force-dynamic";
 
-export default async function ConnectionsPage() {
+export default async function ConnectionsPage({
+  searchParams
+}: {
+  searchParams?: { error?: string; success?: string; appId?: string };
+}) {
   const session = await getSession();
   if (session?.role === "LEAD_TAGGER") {
     redirect("/leads");
@@ -56,8 +60,50 @@ export default async function ConnectionsPage() {
     "Waterproof Tape"
   ];
 
+  const hasMetaError = connections.some(c => c.platform === "META" && c.status === "ERROR");
+
   return (
     <div>
+      {searchParams?.error === "InvalidAppId" && (
+        <div className="mb-6 p-4 bg-rust-tint border border-rust/30 rounded-md text-[13px] flex items-start gap-3">
+          <span className="text-[18px]">⚠️</span>
+          <div>
+            <b className="font-semibold text-ink">Invalid Meta App ID Configured</b>
+            <p className="mt-1 text-ink-soft">
+              The Meta App ID configured in Vercel environment variables ({searchParams?.appId ? `"${searchParams.appId}"` : "empty"}) is not a valid Meta App ID.
+            </p>
+            <div className="mt-2 text-[12px] text-ink-soft bg-white/70 p-2.5 rounded border border-rust/20">
+              <b className="text-ink">How to resolve in Vercel:</b>
+              <ol className="list-decimal ml-4 mt-1 space-y-1">
+                <li>Go to your Vercel Project Dashboard &rarr; <b>Settings</b> &rarr; <b>Environment Variables</b>.</li>
+                <li>Check <code className="bg-stone/50 px-1 py-0.5 rounded font-mono text-ink">META_APP_ID</code> and ensure it contains your real numeric App ID from <a href="https://developers.facebook.com/apps" target="_blank" rel="noreferrer" className="underline font-semibold text-ink">developers.facebook.com</a> (only numbers, without surrounding quotes).</li>
+                <li>Ensure <code className="bg-stone/50 px-1 py-0.5 rounded font-mono text-ink">META_APP_SECRET</code> matches the App Secret from Meta Developer console.</li>
+                <li>Make sure your Facebook App is set to <b>Live</b> (or that your account is added under <b>App Roles</b>) in Meta Developer portal.</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {searchParams?.error && searchParams.error !== "InvalidAppId" && (
+        <div className="mb-6 p-4 bg-rust-tint border border-rust/30 rounded-md text-[13px] text-rust flex items-center gap-3">
+          <span className="text-[18px]">⚠️</span>
+          <span>Authentication Error: {decodeURIComponent(searchParams.error)}</span>
+        </div>
+      )}
+
+      {hasMetaError && !searchParams?.error && (
+        <div className="mb-6 p-4 bg-amber-tint border border-[#e3d3a8] rounded-md text-[13px] flex items-start gap-3">
+          <span className="text-[18px]">ℹ️</span>
+          <div>
+            <b className="font-semibold text-ink">Meta Connections Session Expired</b>
+            <p className="mt-0.5 text-ink-soft text-[12.5px]">
+              The previous 60-day Meta Graph API access token expired. Please click <b>Reconnect</b> below with your Admin Facebook account to renew sync permissions.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="flex justify-between items-end mb-8 border-b border-stone pb-5">
         <div>
           <h1 className="font-serif text-[30px] m-0 mb-1 font-semibold">Connections</h1>

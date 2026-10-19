@@ -14,7 +14,14 @@ export async function GET(req: Request) {
   const protocol = host.includes("localhost") ? "http" : "https";
   const dynamicRedirectUri = `${protocol}://${host}/api/auth/meta/callback`;
 
-  const connector = new MetaAdsConnector(process.env.META_REDIRECT_URI || dynamicRedirectUri);
+  const connector = new MetaAdsConnector(dynamicRedirectUri);
+  const appId = connector.getAppId();
+
+  if (!appId || !/^\d+$/.test(appId) || appId.length < 10) {
+    console.error(`Invalid META_APP_ID configured: "${appId}"`);
+    return NextResponse.redirect(new URL(`/connections?error=InvalidAppId&appId=${encodeURIComponent(appId || "empty")}`, req.url));
+  }
+
   const state = Math.random().toString(36).substring(7);
   const url = connector.getAuthUrl(state);
   
