@@ -4,7 +4,17 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-export default function LeadsClient({ initialLeads, currentTag }: { initialLeads: any[], currentTag: string }) {
+import { extractLeadMetadata } from "@/lib/leadMatcher";
+
+export default function LeadsClient({ 
+  initialLeads, 
+  currentTag, 
+  availableAdSets = [] 
+}: { 
+  initialLeads: any[]; 
+  currentTag: string; 
+  availableAdSets?: any[]; 
+}) {
   const [leads, setLeads] = useState(initialLeads);
   const [importing, setImporting] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -37,6 +47,22 @@ export default function LeadsClient({ initialLeads, currentTag }: { initialLeads
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleAssignAdSet = async (leadId: string, adSetId: string) => {
+    try {
+      const res = await fetch(`/api/leads/${leadId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adSetId })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setLeads(leads.map(l => l.id === leadId ? { ...l, adSet: data.lead.adSet, adSetId } : l));
+      }
+    } catch (err) {
+      console.error("Failed to assign ad set:", err);
     }
   };
 
@@ -268,14 +294,15 @@ export default function LeadsClient({ initialLeads, currentTag }: { initialLeads
           </div>
         )}
         {filteredLeads.map(lead => {
-          const brandName = lead.adSet?.campaign?.brand?.name || "Unknown Brand";
-          const adName = lead.adSet?.name || "Unknown Ad Set";
+          const meta = extractLeadMetadata(lead.messageText);
+          const brandName = lead.adSet?.campaign?.brand?.name || meta.brand || "Unknown Brand";
+          const adName = lead.adSet?.name;
           const time = new Date(lead.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
           return (
             <div key={lead.id} className="bg-card py-4 px-5 flex justify-between items-center gap-4 hover:bg-stone/5 transition-colors">
-              <div>
-                <div className="text-[13.5px]">
+              <div className="min-w-0 flex-1">
+                <div className="text-[13.5px] leading-relaxed">
                   <span className="font-semibold mr-2">{lead.contactRef}</span>
                   {lead.messageText && <span className="text-ink-soft">"{lead.messageText}"</span>}
                   {currentTag === "ALL" && (
@@ -284,8 +311,88 @@ export default function LeadsClient({ initialLeads, currentTag }: { initialLeads
                     </span>
                   )}
                 </div>
-                <div className="text-[11.5px] text-stone-dark mt-1" suppressHydrationWarning>
-                  {brandName} &middot; {adName} &middot; {time}
+
+                {/* Lead Attribution & Details Row */}
+                <div className="flex flex-wrap items-center gap-2 mt-2 text-[11.5px]" suppressHydrationWarning>
+                  {/* Platform Source Badge */}
+                  {meta.platform === "Facebook Ad" && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-[#1877F2]/10 text-[#1877F2] border border-[#1877F2]/30">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#1877F2]"></span>
+                      Facebook Ad
+                    </span>
+                  )}
+                  {meta.platform === "Instagram Ad" && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-[#E1306C]/10 text-[#E1306C] border border-[#E1306C]/30">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#E1306C]"></span>
+                      Instagram Ad
+                    </span>
+                  )}
+                  {meta.platform === "Halte.in Web" && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-green/10 text-green border border-green/30">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green"></span>
+                      Website CTWA
+                    </span>
+                  )}
+                  {meta.platform === "WhatsApp Direct" && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-stone/20 text-stone-dark border border-stone">
+                      WhatsApp Direct
+                    </span>
+                  )}
+
+                  {/* Brand Badge */}
+                  <span className="font-semibold text-ink px-1.5 py-0.5 rounded bg-card border border-stone text-[11px]">
+                    {brandName}
+                  </span>
+
+                  {/* Detected Product */}
+                  {meta.product && (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-stone/15 text-ink-soft border border-stone">
+                      {meta.product}
+                    </span>
+                  )}
+
+                  <span className="text-stone">&bull;</span>
+
+                  {/* Ad Set Selector or Display */}
+                  {adName ? (
+                    <span className="text-ink-soft font-medium flex items-center gap-1">
+                      <span>Ad Set: <strong className="text-ink">{adName}</strong></span>
+                      <select
+                        value={lead.adSetId || ""}
+                        onChange={(e) => handleAssignAdSet(lead.id, e.target.value)}
+                        className="ml-1 text-[10.5px] text-stone-dark border border-stone/70 rounded bg-white px-1 py-0.5 cursor-pointer hover:border-ink hover:text-ink max-w-[200px] truncate"
+                        title="Change Ad Set"
+                      >
+                        <option value={lead.adSetId || ""}>Change Ad Set...</option>
+                        {availableAdSets.map(a => (
+                          <option key={a.id} value={a.id}>
+                            {a.campaign?.brand?.name ? `[${a.campaign.brand.name}] ` : ""}{a.name}
+                          </option>
+                        ))}
+                      </select>
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-bold uppercase tracking-wider bg-amber-tint text-amber border border-[#e3d3a8] px-2 py-0.5 rounded">
+                        Unassigned Ad Set
+                      </span>
+                      <select
+                        value=""
+                        onChange={(e) => handleAssignAdSet(lead.id, e.target.value)}
+                        className="text-[11px] font-semibold text-ink border border-amber/50 rounded bg-amber-tint/40 px-2 py-0.5 cursor-pointer hover:border-amber max-w-[220px]"
+                      >
+                        <option value="" disabled>Link to Ad Set...</option>
+                        {availableAdSets.map(a => (
+                          <option key={a.id} value={a.id}>
+                            {a.campaign?.brand?.name ? `[${a.campaign.brand.name}] ` : ""}{a.name}
+                          </option>
+                        ))}
+                      </select>
+                    </span>
+                  )}
+
+                  <span className="text-stone">&bull;</span>
+                  <span className="text-stone-dark text-[11px]">{time}</span>
                 </div>
               </div>
               <div className="flex gap-2 shrink-0">

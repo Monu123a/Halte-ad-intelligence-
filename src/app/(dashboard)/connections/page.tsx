@@ -15,8 +15,34 @@ export default async function ConnectionsPage() {
     prisma.brand.findMany()
   ]);
 
-  // Quick hardcoded list of valid products from SeasonalRule
-  const products = ["Snow Chains", "BBQ", "Garden Machinery", "Waterproof Tape", "Sprinklers", "Leaf Blowers", "Firepit", "Fogging Machine", "Gensets", "Chainsaw", "Lawn Mowers", "Brush Cutters", "Trimmers", "Pole Pruners", "Tillers", "Portable Sprayers", "Hose Reels", "Mounting Tape", "Cord Organiser", "Garden Pruners"];
+  // List of valid products for campaign mapping & seasonal rules
+  const products = [
+    "BBQ",
+    "Brush Cutters",
+    "Chainsaw",
+    "Combisystem",
+    "Cord Organiser",
+    "Drip irrigation",
+    "Firepit",
+    "Fogging Machine",
+    "Garden Machinery",
+    "Garden Pruners",
+    "Gensets",
+    "Glues",
+    "Hand Tools",
+    "Hose Reels",
+    "Lawn Mowers",
+    "Leaf Blowers",
+    "Mounting Tape",
+    "Pole Pruners",
+    "Portable Sprayers",
+    "Snow Chains",
+    "Sprinklers",
+    "Tillers",
+    "Trimmers",
+    "Velcro Tapes",
+    "Waterproof Tape"
+  ];
 
   return (
     <div>

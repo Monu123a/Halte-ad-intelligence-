@@ -121,7 +121,7 @@ export async function POST(req: Request) {
   }
 
 
-  // 3. Pre-fetch ad sets to map incoming IDs (internal ID or platformAdSetId)
+  // 3. Pre-fetch ad sets to map incoming IDs or auto-match from message text
   const incomingAdSetIds = Array.from(
     new Set(
       rawLeads
@@ -147,13 +147,36 @@ export async function POST(req: Request) {
     }
   }
 
+  // Pre-fetch all ad sets for text-based auto-matching
+  const { matchLeadToAdSet } = await import("@/lib/leadMatcher");
+  const allAdSets = await prisma.adSet.findMany({
+    select: {
+      id: true,
+      name: true,
+      campaign: {
+        select: {
+          name: true,
+          products: true,
+          brand: { select: { id: true, name: true } }
+        }
+      }
+    }
+  });
+
   // 4. Save to Database
   const created = await prisma.lead.createMany({
     data: rawLeads.map((l: any) => {
       const adSetRef = String(l.adSetId || l.adset_id || l.ad_id || l.source_id || "");
-      const mappedAdSetId = adSetRef ? adSetMap.get(adSetRef) || null : null;
+      let mappedAdSetId = adSetRef ? adSetMap.get(adSetRef) || null : null;
       const contactRef = String(l.contactRef || l.phone || l.from || l.sender || l.wa_id || "Unknown");
       const messageText = l.messageText || l.message || l.text || l.body ? String(l.messageText || l.message || l.text || l.body) : null;
+
+      if (!mappedAdSetId && messageText) {
+        const autoMatch = matchLeadToAdSet(messageText, allAdSets);
+        if (autoMatch.adSetId) {
+          mappedAdSetId = autoMatch.adSetId;
+        }
+      }
 
       return {
         contactRef,

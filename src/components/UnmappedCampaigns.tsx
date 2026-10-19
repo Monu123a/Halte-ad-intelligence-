@@ -49,7 +49,9 @@ export function UnmappedCampaigns({ campaigns, brands, products }: { campaigns: 
                   >
                     <option value="" disabled>Select Brand</option>
                     {brands.map(b => (
-                      <option key={b.id} value={b.pageId}>{b.name}</option>
+                      <option key={b.id} value={b.pageId}>
+                        {b.name === "Halte Complete" || b.name === "Halte" ? "ALL / Halte Complete" : b.name}
+                      </option>
                     ))}
                   </select>
                 </td>
