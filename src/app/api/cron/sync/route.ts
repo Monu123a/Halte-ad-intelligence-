@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { runMetaSync } from "@/lib/sync/metaSync";
 import { runGoogleSync } from "@/lib/sync/googleSync";
 import { runWebsiteAnalyticsSync } from "@/lib/sync/websiteAnalyticsSync";
+import { runGeoSync } from "@/lib/sync/geoSync";
 
 export const dynamic = "force-dynamic";
 
@@ -37,11 +38,20 @@ export async function GET(req: Request) {
     // Sync Halte website telemetry (bounce rate, time spent, scroll depth)
     const webSync = await runWebsiteAnalyticsSync();
 
+    // Sync Geographical Intelligence Performance across all accounts
+    let geoSyncResult: any = null;
+    try {
+      geoSyncResult = await runGeoSync();
+    } catch (e: any) {
+      console.warn("[Cron Sync] GeoSync warning:", e.message);
+    }
+
     return NextResponse.json({
       success: true,
       syncedAt: new Date().toISOString(),
       totalConnections: connections.length,
       websiteTelemetrySync: webSync,
+      geoSync: geoSyncResult,
       results
     });
   } catch (error: any) {

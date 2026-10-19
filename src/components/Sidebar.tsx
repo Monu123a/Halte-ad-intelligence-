@@ -14,6 +14,7 @@ export function Sidebar({ user }: { user?: { email: string; role: string } | nul
   const navItems = [
     { label: "Overview", href: "/", requiresAdmin: true },
     { label: "Website Analytics", href: "/analytics", requiresAdmin: true },
+    { label: "Geo Intelligence", href: "/geo", requiresAdmin: true },
     { label: "Brand Report", href: "/brand/Gardena", requiresAdmin: true },
     { label: "Lead Tagging", href: "/leads", requiresAdmin: false },
     { label: "Connections", href: "/connections", requiresAdmin: true },

@@ -55,6 +55,7 @@ model AdConnection {
   lastSyncedAt     DateTime?
   createdAt        DateTime  @default(now())
   campaigns        Campaign[]
+  geoMetrics       GeoMetric[]
 }
 
 enum ConnStatus {
@@ -211,5 +212,27 @@ model WebsiteAnalytics {
   @@index([sessionId])
   @@index([brand])
   @@index([pagePath])
+}
+
+model GeoMetric {
+  id              String       @id @default(cuid())
+  adConnectionId  String
+  adConnection    AdConnection @relation(fields: [adConnectionId], references: [id], onDelete: Cascade)
+  region          String       // State/Territory: "Maharashtra", "Gujarat", "Delhi", etc.
+  country         String       @default("IN")
+  date            DateTime     @default(now())
+  spend           Decimal      @default(0)
+  impressions     Int          @default(0)
+  clicks          Int          @default(0)
+  leads           Int          @default(0)
+  firstReplies    Int          @default(0)
+  conversations   Int          @default(0)
+  rawResponse     Json?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@unique([adConnectionId, region, date])
+  @@index([region])
+  @@index([date])
 }
 
