@@ -96,7 +96,9 @@ export default async function BrandReportPage({
   const circumference = 2 * Math.PI * 62; // ~389.55
   const segments: any[] = [];
   let currentOffset = 0;
-  const sortedRegions = Object.entries(spendByRegion).sort((a, b) => b[1] - a[1]);
+  const sortedRegions: [string, number][] = (Object.entries(spendByRegion) as [string, number][]).sort(
+    (a, b) => Number(b[1]) - Number(a[1])
+  );
   
   const colorToken = currentBrand?.colorToken || "stone";
   const colors = [
