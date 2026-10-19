@@ -56,21 +56,81 @@ export async function POST(req: Request) {
     adSetMap.set(adSet.platformAdSetId, adSet.id);
   }
 
-  const created = await prisma.lead.createMany({
-    data: leads.map((l: any) => {
-      const mappedAdSetId = l.adSetId ? adSetMap.get(l.adSetId) : null;
-      return {
-        contactRef: l.contactRef,
-        messageText: l.messageText,
-        adSetId: mappedAdSetId
-      };
-    })
-  });
+  const { normalizePhone, extractLeadMetadata } = await import("@/lib/leadMatcher");
+
+  let createdCount = 0;
+  let updatedCount = 0;
+
+  for (const l of leads) {
+    const mappedAdSetId = l.adSetId ? adSetMap.get(l.adSetId) : null;
+    const contactRef = String(l.contactRef || "Unknown");
+    const messageText = l.messageText ? String(l.messageText) : null;
+    const phoneRaw = normalizePhone(contactRef);
+    const meta = extractLeadMetadata(messageText, contactRef);
+    const instance = l.instance || meta.phoneInstance;
+    const platform = l.platform || meta.platform;
+    const accountName = l.accountName || meta.accountName;
+
+    let existingLead = null;
+    if (phoneRaw) {
+      existingLead = await prisma.lead.findFirst({
+        where: {
+          OR: [
+            { phoneRaw },
+            { contactRef: { contains: phoneRaw } }
+          ]
+        },
+        orderBy: { createdAt: "desc" }
+      });
+    }
+
+    if (existingLead) {
+      const prevText = existingLead.messageText || "";
+      let combinedText = prevText;
+      if (messageText && !prevText.includes(messageText.trim())) {
+        combinedText = prevText ? `${prevText}\n---\n${messageText.trim()}` : messageText.trim();
+      }
+
+      await prisma.lead.update({
+        where: { id: existingLead.id },
+        data: {
+          phoneRaw: existingLead.phoneRaw || phoneRaw,
+          instance: existingLead.instance || instance,
+          platform: existingLead.platform || platform,
+          accountName: existingLead.accountName || accountName,
+          messageText: combinedText,
+          messagesCount: { increment: 1 },
+          adSetId: existingLead.adSetId || mappedAdSetId,
+          updatedAt: new Date()
+        }
+      });
+      updatedCount++;
+    } else {
+      await prisma.lead.create({
+        data: {
+          contactRef,
+          phoneRaw,
+          instance,
+          platform,
+          accountName,
+          messageText,
+          messagesCount: 1,
+          adSetId: mappedAdSetId
+        }
+      });
+      createdCount++;
+    }
+  }
 
   try {
     const { invalidateServicesCache } = await import("@/lib/services");
     invalidateServicesCache();
   } catch {}
 
-  return NextResponse.json({ success: true, count: created.count });
+  return NextResponse.json({ 
+    success: true, 
+    count: createdCount + updatedCount,
+    created: createdCount,
+    updated: updatedCount 
+  });
 }

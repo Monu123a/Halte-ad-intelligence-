@@ -5,10 +5,19 @@ export interface DetectedLeadMetadata {
   brand: "BKR" | "Gardena" | "Gorilla" | "Velcro" | "Halte All" | "Halte Complete" | null;
   product: string | null;
   phoneInstance: string | null;
+  accountName: string | null;
+  phoneRaw: string | null;
   state: string | null;
 }
 
-
+export function normalizePhone(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length >= 10) {
+    return digits.slice(-10);
+  }
+  return digits.length > 0 ? digits : null;
+}
 
 const PRODUCT_DEFINITIONS: Array<{ name: string; keywords: string[] }> = [
   { name: "Lawn Mowers", keywords: ["lawn mower", "mower", "grass cutting", "grass cutter", "lg0862"] },
@@ -37,13 +46,24 @@ export function extractLeadMetadata(
   contactRef?: string | null | undefined
 ): DetectedLeadMetadata {
   const lower = (text || "").toLowerCase();
+  const rawText = text || "";
 
-
-  // 1. Phone Instance
+  // 1. Phone Instance (e.g. Phone 1, Phone 2, Website)
+  const hasPhone1 = /\[(phone_1|phone 1)\]/i.test(rawText);
+  const hasPhone2 = /\[(phone_2|phone 2)\]/i.test(rawText);
+  
   let phoneInstance: string | null = null;
-  const instanceMatch = (text || "").match(/^\[(Phone_1|Phone 2|Phone_2|Phone 1|Website)\]/i);
-  if (instanceMatch) {
-    phoneInstance = instanceMatch[1];
+  if (hasPhone1 && hasPhone2) {
+    phoneInstance = "Phone 1 & Phone 2";
+  } else if (hasPhone1) {
+    phoneInstance = "Phone 1";
+  } else if (hasPhone2) {
+    phoneInstance = "Phone 2";
+  } else {
+    const genericMatch = rawText.match(/^\[([^\]]+)\]/);
+    if (genericMatch) {
+      phoneInstance = genericMatch[1].replace(/_/g, " ").trim();
+    }
   }
 
   // 2. Platform
@@ -97,12 +117,32 @@ export function extractLeadMetadata(
     brand = "Halte All";
   }
 
+  // 5. Account Name Attribution (which Instagram handle / Facebook page / WhatsApp number)
+  let accountName: string | null = null;
+  if (platform === "Instagram Ad") {
+    if (brand === "Gardena") accountName = "@gardena.india";
+    else if (brand === "BKR") accountName = "@bkr.machine";
+    else if (brand === "Gorilla") accountName = "@gorillaglue.in";
+    else if (brand === "Velcro") accountName = "@velcro.india";
+    else accountName = "@halte.in";
+  } else if (platform === "Facebook Ad") {
+    if (brand === "Gardena") accountName = "Gardena India";
+    else if (brand === "BKR") accountName = "BKR Engineering";
+    else if (brand === "Gorilla") accountName = "Gorilla Glue India";
+    else accountName = "HALTE India";
+  } else if (phoneInstance) {
+    accountName = `WhatsApp (${phoneInstance})`;
+  }
+
+  const phoneRaw = normalizePhone(contactRef);
 
   return {
     platform,
     brand,
     product,
     phoneInstance,
+    accountName,
+    phoneRaw,
     state: resolvePhoneState(contactRef)
   };
 }

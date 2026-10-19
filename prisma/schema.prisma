@@ -110,11 +110,21 @@ model Lead {
   adSetId       String?
   adSet         AdSet?     @relation(fields: [adSetId], references: [id])
   contactRef    String     // masked/partial phone or WhatsApp ref
+  phoneRaw      String?    // normalized 10-digit phone number for grouping
+  instance      String?    // e.g. "Phone 1", "Phone 2", "Website"
+  platform      String?    // "Instagram Ad" | "Facebook Ad" | "Website CTWA" | "WhatsApp Direct"
+  accountName   String?    // Instagram handle or business account name e.g. "@halte.in"
   messageText   String?
+  messagesCount Int        @default(1)
   tag           LeadTag    @default(UNTAGGED)
   taggedBy      String?    // user id
   taggedAt      DateTime?
   createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @default(now()) @updatedAt
+
+  @@index([phoneRaw])
+  @@index([instance])
+  @@index([platform])
 }
 
 enum LeadTag {

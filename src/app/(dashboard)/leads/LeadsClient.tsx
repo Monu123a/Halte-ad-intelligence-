@@ -31,7 +31,13 @@ export default function LeadsClient({
   const [leads, setLeads] = useState(initialLeads);
   const [importing, setImporting] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [channelFilter, setChannelFilter] = useState<string>("ALL");
+  const [expandedThreads, setExpandedThreads] = useState<Record<string, boolean>>({});
   const router = useRouter();
+
+  const toggleThread = (leadId: string) => {
+    setExpandedThreads(prev => ({ ...prev, [leadId]: !prev[leadId] }));
+  };
 
   // Team permission state for WhatsApp lead tagging
   const [users, setUsers] = useState<UserItem[]>(initialUsers);
@@ -174,18 +180,33 @@ export default function LeadsClient({
       return;
     }
     const XLSX = await import("xlsx");
-    const exportData = filteredLeads.map((l) => ({
-      "Contact Ref": l.contactRef,
-      "Message / Inquiry": l.messageText || "",
-      "Tag": l.tag,
-      "Brand": l.adSet?.campaign?.brand?.name || "Unassigned",
-      "Ad Set": l.adSet?.name || "Direct / Web",
-      "Date": new Date(l.createdAt).toLocaleDateString(),
-      "Time": new Date(l.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    }));
+    const exportData = filteredLeads.map((l) => {
+      const meta = extractLeadMetadata(l.messageText, l.contactRef);
+      const messages = l.messageText ? l.messageText.split("\n---\n") : [];
+      return {
+        "Contact / Name": l.contactRef,
+        "Phone Number": l.phoneRaw || meta.phoneRaw || "",
+        "Receiving Channel": l.instance || meta.phoneInstance || "WhatsApp",
+        "Platform Source": l.platform || meta.platform || "",
+        "Account / Handle": l.accountName || meta.accountName || "",
+        "Messages Received": l.messagesCount || (messages.length > 0 ? messages.length : 1),
+        "Latest Message": messages.length > 0 ? messages[messages.length - 1] : (l.messageText || ""),
+        "Full Message History": l.messageText || "",
+        "Tag Status": l.tag,
+        "Brand": l.adSet?.campaign?.brand?.name || meta.brand || "Unassigned",
+        "Ad Set": l.adSet?.name || "Direct / Web",
+        "State / Region": meta.state || "",
+        "Date": new Date(l.updatedAt || l.createdAt).toLocaleDateString(),
+        "Time": new Date(l.updatedAt || l.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      };
+    });
 
     const ws = XLSX.utils.json_to_sheet(exportData);
-    ws["!cols"] = [{ wch: 18 }, { wch: 55 }, { wch: 16 }, { wch: 16 }, { wch: 25 }, { wch: 14 }, { wch: 12 }];
+    ws["!cols"] = [
+      { wch: 22 }, { wch: 15 }, { wch: 18 }, { wch: 16 }, { wch: 20 },
+      { wch: 10 }, { wch: 45 }, { wch: 60 }, { wch: 14 }, { wch: 16 },
+      { wch: 25 }, { wch: 15 }, { wch: 12 }, { wch: 10 }
+    ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Leads_Export");
     XLSX.writeFile(wb, `halte_leads_${currentTag.toLowerCase()}_export.xlsx`);
@@ -279,13 +300,76 @@ export default function LeadsClient({
       : "text-[12px] font-semibold text-ink-soft hover:text-ink pb-1 px-1 transition-colors";
   };
 
+  // Channel breakdown counts
+  const channelCounts = {
+    ALL: leads.length,
+    PHONE_1: leads.filter(l => {
+      const inst = l.instance || "";
+      const text = l.messageText || "";
+      return inst.includes("Phone 1") || /\[(phone_1|phone 1)\]/i.test(text);
+    }).length,
+    PHONE_2: leads.filter(l => {
+      const inst = l.instance || "";
+      const text = l.messageText || "";
+      return inst.includes("Phone 2") || /\[(phone_2|phone 2)\]/i.test(text);
+    }).length,
+    INSTAGRAM: leads.filter(l => {
+      const plat = l.platform || "";
+      const text = (l.messageText || "").toLowerCase();
+      const acc = l.accountName || "";
+      const camp = (l.adSet?.campaign?.name || "").toLowerCase();
+      return plat === "Instagram Ad" || text.includes("instagram") || acc.startsWith("@") || camp.includes("instagram");
+    }).length,
+    FACEBOOK: leads.filter(l => {
+      const plat = l.platform || "";
+      const text = (l.messageText || "").toLowerCase();
+      const camp = (l.adSet?.campaign?.name || "").toLowerCase();
+      return plat === "Facebook Ad" || text.includes("facebook") || camp.includes("facebook");
+    }).length,
+    WEBSITE: leads.filter(l => {
+      const plat = l.platform || "";
+      const text = (l.messageText || "").toLowerCase();
+      return plat === "Halte.in Web" || text.includes("website") || text.includes("halte.in");
+    }).length,
+  };
+
   const filteredLeads = leads.filter(l => {
+    // 1. Channel filter
+    if (channelFilter === "PHONE_1") {
+      const inst = l.instance || "";
+      const text = l.messageText || "";
+      if (!inst.includes("Phone 1") && !/\[(phone_1|phone 1)\]/i.test(text)) return false;
+    } else if (channelFilter === "PHONE_2") {
+      const inst = l.instance || "";
+      const text = l.messageText || "";
+      if (!inst.includes("Phone 2") && !/\[(phone_2|phone 2)\]/i.test(text)) return false;
+    } else if (channelFilter === "INSTAGRAM") {
+      const plat = l.platform || "";
+      const text = (l.messageText || "").toLowerCase();
+      const acc = l.accountName || "";
+      const camp = (l.adSet?.campaign?.name || "").toLowerCase();
+      if (plat !== "Instagram Ad" && !text.includes("instagram") && !acc.startsWith("@") && !camp.includes("instagram")) return false;
+    } else if (channelFilter === "FACEBOOK") {
+      const plat = l.platform || "";
+      const text = (l.messageText || "").toLowerCase();
+      const camp = (l.adSet?.campaign?.name || "").toLowerCase();
+      if (plat !== "Facebook Ad" && !text.includes("facebook") && !camp.includes("facebook")) return false;
+    } else if (channelFilter === "WEBSITE") {
+      const plat = l.platform || "";
+      const text = (l.messageText || "").toLowerCase();
+      if (plat !== "Halte.in Web" && !text.includes("website") && !text.includes("halte.in")) return false;
+    }
+
+    // 2. Search query filter
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     const contactMatch = l.contactRef?.toLowerCase().includes(q);
+    const phoneMatch = l.phoneRaw?.toLowerCase().includes(q);
     const msgMatch = l.messageText?.toLowerCase().includes(q);
     const adMatch = l.adSet?.name?.toLowerCase().includes(q);
-    return contactMatch || msgMatch || adMatch;
+    const instMatch = l.instance?.toLowerCase().includes(q);
+    const accMatch = l.accountName?.toLowerCase().includes(q);
+    return contactMatch || phoneMatch || msgMatch || adMatch || instMatch || accMatch;
   });
 
   return (
@@ -352,7 +436,7 @@ export default function LeadsClient({
         </div>
       </div>
 
-      <div className="flex justify-between items-center mb-4 border-b border-stone pb-[1px]">
+      <div className="flex justify-between items-center mb-3 border-b border-stone pb-[1px]">
         <div className="flex gap-4">
           <Link href="/leads?tag=UNTAGGED" className={getTabClass("UNTAGGED")}>Untagged</Link>
           <Link href="/leads?tag=GENUINE" className={getTabClass("GENUINE")}>Genuine</Link>
@@ -366,61 +450,203 @@ export default function LeadsClient({
         <div className="mb-2">
           <input
             type="text"
-            placeholder="Search leads..."
+            placeholder="Search phone, message, brand..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="text-[12.5px] px-3 py-1.5 border border-stone rounded-sm bg-card w-[200px] outline-none focus:border-stone-dark transition-colors"
+            className="text-[12.5px] px-3 py-1.5 border border-stone rounded-sm bg-card w-[240px] outline-none focus:border-stone-dark transition-colors"
           />
         </div>
+      </div>
+
+      {/* Channel / Destination Filter Bar */}
+      <div className="flex flex-wrap items-center gap-2 mb-4 p-2.5 bg-[#F9F8F5] border border-stone rounded-md">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-ink-soft mr-1 flex items-center gap-1">
+          <span>📡</span> Receiving Channel:
+        </span>
+        <button
+          onClick={() => setChannelFilter("ALL")}
+          className={`text-[11.5px] font-semibold px-2.5 py-1 rounded-sm border transition-all ${
+            channelFilter === "ALL"
+              ? "bg-ink text-white border-ink shadow-xs"
+              : "bg-white text-ink-soft border-stone hover:text-ink hover:border-ink/40"
+          }`}
+        >
+          All Channels ({channelCounts.ALL})
+        </button>
+        <button
+          onClick={() => setChannelFilter("PHONE_1")}
+          className={`text-[11.5px] font-semibold px-2.5 py-1 rounded-sm border transition-all flex items-center gap-1.5 ${
+            channelFilter === "PHONE_1"
+              ? "bg-[#128C7E] text-white border-[#128C7E] shadow-xs"
+              : "bg-white text-ink-soft border-stone hover:text-[#128C7E] hover:border-[#128C7E]/40"
+          }`}
+        >
+          <span>📱</span> WhatsApp Phone 1 ({channelCounts.PHONE_1})
+        </button>
+        <button
+          onClick={() => setChannelFilter("PHONE_2")}
+          className={`text-[11.5px] font-semibold px-2.5 py-1 rounded-sm border transition-all flex items-center gap-1.5 ${
+            channelFilter === "PHONE_2"
+              ? "bg-[#075E54] text-white border-[#075E54] shadow-xs"
+              : "bg-white text-ink-soft border-stone hover:text-[#075E54] hover:border-[#075E54]/40"
+          }`}
+        >
+          <span>📱</span> WhatsApp Phone 2 ({channelCounts.PHONE_2})
+        </button>
+        <button
+          onClick={() => setChannelFilter("INSTAGRAM")}
+          className={`text-[11.5px] font-semibold px-2.5 py-1 rounded-sm border transition-all flex items-center gap-1.5 ${
+            channelFilter === "INSTAGRAM"
+              ? "bg-[#E1306C] text-white border-[#E1306C] shadow-xs"
+              : "bg-white text-ink-soft border-stone hover:text-[#E1306C] hover:border-[#E1306C]/40"
+          }`}
+        >
+          <span>📸</span> Instagram ({channelCounts.INSTAGRAM})
+        </button>
+        <button
+          onClick={() => setChannelFilter("FACEBOOK")}
+          className={`text-[11.5px] font-semibold px-2.5 py-1 rounded-sm border transition-all flex items-center gap-1.5 ${
+            channelFilter === "FACEBOOK"
+              ? "bg-[#1877F2] text-white border-[#1877F2] shadow-xs"
+              : "bg-white text-ink-soft border-stone hover:text-[#1877F2] hover:border-[#1877F2]/40"
+          }`}
+        >
+          <span>🔵</span> Facebook ({channelCounts.FACEBOOK})
+        </button>
+        <button
+          onClick={() => setChannelFilter("WEBSITE")}
+          className={`text-[11.5px] font-semibold px-2.5 py-1 rounded-sm border transition-all flex items-center gap-1.5 ${
+            channelFilter === "WEBSITE"
+              ? "bg-green text-white border-green shadow-xs"
+              : "bg-white text-ink-soft border-stone hover:text-green hover:border-green/40"
+          }`}
+        >
+          <span>🌐</span> Website ({channelCounts.WEBSITE})
+        </button>
       </div>
 
       <div className="flex flex-col gap-[1px] bg-stone border border-stone rounded-md overflow-hidden">
         {filteredLeads.length === 0 && (
           <div className="bg-card py-6 px-5 text-ink-soft text-[13.5px]">
-            No leads found for this filter/search.
+            No leads found for this channel and filter.
           </div>
         )}
         {filteredLeads.map(lead => {
           const meta = extractLeadMetadata(lead.messageText, lead.contactRef);
-          const brandName = lead.adSet?.campaign?.brand?.name || meta.brand || "Unknown Brand";
+          const brandName = lead.adSet?.campaign?.brand?.name || meta.brand || "Halte All";
           const adName = lead.adSet?.name;
-          const time = new Date(lead.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const time = new Date(lead.updatedAt || lead.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const dateStr = new Date(lead.updatedAt || lead.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' });
+
+          const instanceName = lead.instance || meta.phoneInstance;
+          const platformName = lead.platform || meta.platform;
+          const accountName = lead.accountName || meta.accountName;
+
+          // Split multi-message thread
+          const messages = lead.messageText ? lead.messageText.split("\n---\n") : [];
+          const hasMultipleMessages = messages.length > 1 || (lead.messagesCount && lead.messagesCount > 1);
+          const latestMessage = messages.length > 0 ? messages[messages.length - 1] : (lead.messageText || "");
+          const isExpanded = expandedThreads[lead.id];
 
           return (
-            <div key={lead.id} className="bg-card py-4 px-5 flex justify-between items-center gap-4 hover:bg-stone/5 transition-colors">
+            <div key={lead.id} className="bg-card py-4 px-5 flex justify-between items-start gap-4 hover:bg-stone/5 transition-colors">
               <div className="min-w-0 flex-1">
                 <div className="text-[13.5px] leading-relaxed">
-                  <span className="font-semibold mr-2">{lead.contactRef}</span>
-                  {lead.messageText && <span className="text-ink-soft">"{lead.messageText}"</span>}
-                  {currentTag === "ALL" && (
-                    <span className="ml-2 text-[10px] font-bold uppercase px-2 py-0.5 rounded-sm bg-stone text-stone-dark border border-stone-dark/30">
-                      {lead.tag === "QUOTATION_SENT" ? "QUOTATION SENT" : lead.tag}
-                    </span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold">{lead.contactRef}</span>
+                    {hasMultipleMessages && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-stone/25 text-stone-dark font-mono">
+                        {messages.length || lead.messagesCount} msgs
+                      </span>
+                    )}
+                    {currentTag === "ALL" && (
+                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-sm bg-stone text-stone-dark border border-stone-dark/30">
+                        {lead.tag === "QUOTATION_SENT" ? "QUOTATION SENT" : lead.tag}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Latest Message Preview */}
+                  {!isExpanded && latestMessage && (
+                    <div className="text-ink-soft mt-1 text-[13px] line-clamp-2">
+                      "{latestMessage}"
+                    </div>
+                  )}
+
+                  {/* Thread View Expand/Collapse Toggle */}
+                  {hasMultipleMessages && (
+                    <button
+                      type="button"
+                      onClick={() => toggleThread(lead.id)}
+                      className="text-[11px] font-semibold text-green hover:underline mt-1.5 flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>{isExpanded ? "▲ Hide conversation history" : `▼ View conversation history (${messages.length} messages)`}</span>
+                    </button>
+                  )}
+
+                  {/* Expanded Conversation Thread */}
+                  {isExpanded && (
+                    <div className="mt-2.5 space-y-2 bg-[#F6F5F0] border border-stone/70 p-3.5 rounded-md max-h-[320px] overflow-y-auto">
+                      <div className="text-[10.5px] font-bold uppercase tracking-wider text-ink-soft flex justify-between items-center pb-1 border-b border-stone/40">
+                        <span>Customer Conversation History ({messages.length} messages):</span>
+                        <span className="font-mono text-[9.5px]">Earliest: {new Date(lead.createdAt).toLocaleDateString()}</span>
+                      </div>
+                      {messages.map((msg: string, idx: number) => (
+                        <div key={idx} className="bg-white p-2.5 rounded-md border border-stone/40 text-[12.5px] text-ink shadow-2xs">
+                          <div className="text-[10px] font-mono text-stone-dark mb-1 font-semibold flex items-center gap-2">
+                            <span>#{idx + 1}</span>
+                            <span>&bull;</span>
+                            <span className="text-ink-soft">{msg.startsWith("[") ? msg.split("]")[0] + "]" : "Message"}</span>
+                          </div>
+                          <div className="whitespace-pre-wrap leading-relaxed">{msg.replace(/^\[[^\]]+\]\s*/, "")}</div>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
 
                 {/* Lead Attribution & Details Row */}
-                <div className="flex flex-wrap items-center gap-2 mt-2 text-[11.5px]" suppressHydrationWarning>
-                  {/* Platform Source Badge */}
-                  {meta.platform === "Facebook Ad" && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-[#1877F2]/10 text-[#1877F2] border border-[#1877F2]/30">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#1877F2]"></span>
-                      Facebook Ad
+                <div className="flex flex-wrap items-center gap-2 mt-2.5 text-[11.5px]" suppressHydrationWarning>
+                  {/* Receiving WhatsApp Instance Badge */}
+                  {instanceName?.includes("Phone 1") && instanceName?.includes("Phone 2") && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-[#128C7E]/10 text-[#075E54] border border-[#128C7E]/30">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#128C7E]"></span>
+                      📱 WhatsApp (Phone 1 &amp; 2)
                     </span>
                   )}
-                  {meta.platform === "Instagram Ad" && (
+                  {instanceName?.includes("Phone 1") && !instanceName?.includes("Phone 2") && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-[#25D366]/10 text-[#128C7E] border border-[#25D366]/30">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#25D366]"></span>
+                      📱 WhatsApp (Phone 1)
+                    </span>
+                  )}
+                  {instanceName?.includes("Phone 2") && !instanceName?.includes("Phone 1") && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-[#075E54]/10 text-[#075E54] border border-[#075E54]/30">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#075E54]"></span>
+                      📱 WhatsApp (Phone 2)
+                    </span>
+                  )}
+
+                  {/* Platform / Account Source Badge */}
+                  {platformName === "Instagram Ad" && (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-[#E1306C]/10 text-[#E1306C] border border-[#E1306C]/30">
                       <span className="w-1.5 h-1.5 rounded-full bg-[#E1306C]"></span>
-                      Instagram Ad
+                      📸 Instagram {accountName ? `(${accountName})` : "Ad"}
                     </span>
                   )}
-                  {meta.platform === "Halte.in Web" && (
+                  {platformName === "Facebook Ad" && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-[#1877F2]/10 text-[#1877F2] border border-[#1877F2]/30">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#1877F2]"></span>
+                      🔵 Facebook {accountName ? `(${accountName})` : "Ad"}
+                    </span>
+                  )}
+                  {platformName === "Halte.in Web" && (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-green/10 text-green border border-green/30">
                       <span className="w-1.5 h-1.5 rounded-full bg-green"></span>
-                      Website CTWA
+                      🌐 Website CTWA
                     </span>
                   )}
-                  {meta.platform === "WhatsApp Direct" && (
+                  {platformName === "WhatsApp Direct" && !instanceName && (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-stone/20 text-stone-dark border border-stone">
                       WhatsApp Direct
                     </span>
@@ -437,7 +663,6 @@ export default function LeadsClient({
                   <span className="font-semibold text-ink px-1.5 py-0.5 rounded bg-card border border-stone text-[11px]">
                     {brandName}
                   </span>
-
 
                   {/* Detected Product */}
                   {meta.product && (
@@ -487,10 +712,10 @@ export default function LeadsClient({
                   )}
 
                   <span className="text-stone">&bull;</span>
-                  <span className="text-stone-dark text-[11px]">{time}</span>
+                  <span className="text-stone-dark text-[11px]">{dateStr}, {time}</span>
                 </div>
               </div>
-              <div className="flex gap-2 shrink-0">
+              <div className="flex gap-2 shrink-0 pt-0.5">
                 <button onClick={() => handleTag(lead.id, "SPAM")} className={`text-[11.5px] font-semibold py-1.5 px-3 border rounded-sm transition-colors ${lead.tag === "SPAM" ? "bg-rust text-white border-rust" : "border-stone bg-white text-ink-soft hover:border-rust hover:text-rust"}`}>Spam</button>
                 <button onClick={() => handleTag(lead.id, "INFO_ONLY")} className={`text-[11.5px] font-semibold py-1.5 px-3 border rounded-sm transition-colors ${lead.tag === "INFO_ONLY" ? "bg-ink text-white border-ink" : "border-stone bg-white text-ink-soft hover:border-ink"}`}>Info-only</button>
                 <button onClick={() => handleTag(lead.id, "GENUINE")} className={`text-[11.5px] font-semibold py-1.5 px-3 border rounded-sm transition-colors ${lead.tag === "GENUINE" ? "bg-green text-white border-green" : "border-stone bg-white text-ink-soft hover:border-green hover:text-green"}`}>Genuine</button>

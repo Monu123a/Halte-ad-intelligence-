@@ -163,28 +163,98 @@ export async function POST(req: Request) {
     }
   });
 
-  // 4. Save to Database
-  const created = await prisma.lead.createMany({
-    data: rawLeads.map((l: any) => {
-      const adSetRef = String(l.adSetId || l.adset_id || l.ad_id || l.source_id || "");
-      let mappedAdSetId = adSetRef ? adSetMap.get(adSetRef) || null : null;
-      const contactRef = String(l.contactRef || l.phone || l.from || l.sender || l.wa_id || "Unknown");
-      const messageText = l.messageText || l.message || l.text || l.body ? String(l.messageText || l.message || l.text || l.body) : null;
+  // 4. Save to Database: Number-wise lead grouping (one lead per phone number)
+  const { normalizePhone, extractLeadMetadata } = await import("@/lib/leadMatcher");
+  
+  let insertedCount = 0;
+  let updatedCount = 0;
 
-      if (!mappedAdSetId && messageText) {
-        const autoMatch = matchLeadToAdSet(messageText, allAdSets);
-        if (autoMatch.adSetId) {
-          mappedAdSetId = autoMatch.adSetId;
-        }
+  for (const l of rawLeads) {
+    const adSetRef = String(l.adSetId || l.adset_id || l.ad_id || l.source_id || "");
+    let mappedAdSetId = adSetRef ? adSetMap.get(adSetRef) || null : null;
+    const contactRef = String(l.contactRef || l.phone || l.from || l.sender || l.wa_id || "Unknown");
+    const messageText = l.messageText || l.message || l.text || l.body ? String(l.messageText || l.message || l.text || l.body) : null;
+
+    if (!mappedAdSetId && messageText) {
+      const autoMatch = matchLeadToAdSet(messageText, allAdSets);
+      if (autoMatch.adSetId) {
+        mappedAdSetId = autoMatch.adSetId;
+      }
+    }
+
+    const phoneRaw = normalizePhone(contactRef);
+    const meta = extractLeadMetadata(messageText, contactRef);
+    const instance = l.instance ? String(l.instance).replace(/_/g, " ").trim() : meta.phoneInstance;
+    const platform = meta.platform;
+    const accountName = meta.accountName;
+
+    // Check for existing lead by phone number
+    let existingLead = null;
+    if (phoneRaw) {
+      existingLead = await prisma.lead.findFirst({
+        where: {
+          OR: [
+            { phoneRaw },
+            { contactRef: { contains: phoneRaw } }
+          ]
+        },
+        orderBy: { createdAt: "desc" }
+      });
+    } else if (contactRef && contactRef !== "Unknown") {
+      existingLead = await prisma.lead.findFirst({
+        where: { contactRef },
+        orderBy: { createdAt: "desc" }
+      });
+    }
+
+    if (existingLead) {
+      // Append new message if not already present
+      const prevText = existingLead.messageText || "";
+      let combinedText = prevText;
+      if (messageText && !prevText.includes(messageText.trim())) {
+        combinedText = prevText ? `${prevText}\n---\n${messageText.trim()}` : messageText.trim();
       }
 
-      return {
-        contactRef,
-        messageText,
-        adSetId: mappedAdSetId
-      };
-    })
-  });
+      // Determine combined instance
+      let combinedInstance = existingLead.instance;
+      if (instance && existingLead.instance && existingLead.instance !== instance) {
+        if (!existingLead.instance.includes(instance)) {
+          combinedInstance = `${existingLead.instance} & ${instance}`;
+        }
+      } else if (instance) {
+        combinedInstance = instance;
+      }
+
+      await prisma.lead.update({
+        where: { id: existingLead.id },
+        data: {
+          phoneRaw: existingLead.phoneRaw || phoneRaw,
+          instance: combinedInstance,
+          platform: platform !== "WhatsApp Direct" ? platform : existingLead.platform,
+          accountName: accountName || existingLead.accountName,
+          messageText: combinedText,
+          messagesCount: { increment: 1 },
+          adSetId: existingLead.adSetId || mappedAdSetId,
+          updatedAt: new Date()
+        }
+      });
+      updatedCount++;
+    } else {
+      await prisma.lead.create({
+        data: {
+          contactRef,
+          phoneRaw,
+          instance,
+          platform,
+          accountName,
+          messageText,
+          messagesCount: 1,
+          adSetId: mappedAdSetId
+        }
+      });
+      insertedCount++;
+    }
+  }
 
   try {
     const { invalidateServicesCache } = await import("@/lib/services");
@@ -193,8 +263,9 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     success: true,
-    inserted: created.count,
-    message: `Successfully received and saved ${created.count} lead(s)`
+    inserted: insertedCount,
+    updated: updatedCount,
+    message: `Processed ${rawLeads.length} message(s): ${insertedCount} new lead(s) created, ${updatedCount} existing lead(s) updated`
   });
 }
 

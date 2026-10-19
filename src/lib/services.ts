@@ -32,20 +32,27 @@ export async function getLeadsData(currentTag: string = "UNTAGGED", query: strin
         } : {}
       ]
     },
-    orderBy: { createdAt: "desc" },
-    take: 200,
+    orderBy: { updatedAt: "desc" },
+    take: 300,
     select: {
       id: true,
       contactRef: true,
+      phoneRaw: true,
+      instance: true,
+      platform: true,
+      accountName: true,
       messageText: true,
+      messagesCount: true,
       tag: true,
       createdAt: true,
+      updatedAt: true,
       adSet: {
         select: {
           id: true,
           name: true,
           campaign: {
             select: {
+              name: true,
               brand: {
                 select: { name: true }
               }
