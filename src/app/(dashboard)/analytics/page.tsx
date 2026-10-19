@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getSession } from "@/lib/auth";
 import { getWebsiteAnalyticsData, formatDuration } from "@/lib/analyticsService";
 import { runWebsiteAnalyticsSync } from "@/lib/sync/websiteAnalyticsSync";
 
@@ -15,6 +17,10 @@ interface AnalyticsPageProps {
 }
 
 export default async function WebsiteAnalyticsPage({ searchParams }: AnalyticsPageProps) {
+  const session = await getSession();
+  if (session?.role === "LEAD_TAGGER") {
+    redirect("/leads");
+  }
   if (searchParams.sync === "true") {
     try {
       await runWebsiteAnalyticsSync();

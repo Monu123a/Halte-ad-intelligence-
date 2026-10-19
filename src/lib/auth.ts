@@ -7,7 +7,7 @@ const JWT_SECRET = process.env.JWT_SECRET || "fallback_secret";
 export type SessionUser = {
   id: string;
   email: string;
-  role: "ADMIN" | "ANALYST";
+  role: "ADMIN" | "ANALYST" | "LEAD_TAGGER";
 };
 
 export async function getSession(): Promise<SessionUser | null> {

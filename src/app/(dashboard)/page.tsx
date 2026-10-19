@@ -2,6 +2,8 @@ import { getDashboardRecommendations, getOverviewStats } from "@/lib/services";
 import { getWebsiteAnalyticsData, formatDuration } from "@/lib/analyticsService";
 import prisma from "@/lib/prisma";
 import Link from "next/link";
+import { getSession } from "@/lib/auth";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +14,11 @@ export default function OverviewPage({ searchParams }: { searchParams: { page?: 
 }
 
 async function OverviewContent({ searchParams }: { searchParams: { page?: string, filter?: string } }) {
+  const session = await getSession();
+  if (session?.role === "LEAD_TAGGER") {
+    redirect("/leads");
+  }
+
   const [recommendationsRaw, stats, { overview: webOverview }, brands] = await Promise.all([
     getDashboardRecommendations(),
     getOverviewStats(),

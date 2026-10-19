@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getSession } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import MonthSelector from "./MonthSelector";
 
@@ -7,7 +9,12 @@ export const dynamic = "force-dynamic";
 // 60-second in-memory cache for instant brand page transitions
 const brandReportCache = new Map<string, { data: any; expiresAt: number }>();
 
-async function getBrandData(brandName: string, currentMonthStr: string) {
+async function getBrandData(brandName: string, currentMonthStr: string): Promise<{
+  currentBrand: any;
+  isSeasonal: boolean;
+  totalSpend: number;
+  spendByRegion: Record<string, number>;
+}> {
   const cacheKey = `${brandName}_${currentMonthStr}`;
   const now = Date.now();
   const cached = brandReportCache.get(cacheKey);
@@ -77,6 +84,11 @@ export default async function BrandReportPage({
   params: { brandId: string },
   searchParams: { month?: string }
 }) {
+  const session = await getSession();
+  if (session?.role === "LEAD_TAGGER") {
+    redirect("/leads");
+  }
+
   const brandName = params.brandId;
   const currentMonthStr = searchParams.month || new Date().toISOString().substring(0, 7);
   const { currentBrand, isSeasonal, totalSpend, spendByRegion } = await getBrandData(brandName, currentMonthStr);

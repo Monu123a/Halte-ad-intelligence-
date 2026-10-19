@@ -1,18 +1,30 @@
 import prisma from "@/lib/prisma";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { UnmappedCampaigns } from "@/components/UnmappedCampaigns";
+import { TeamManagement } from "@/components/TeamManagement";
 
 export const dynamic = "force-dynamic";
 
 export default async function ConnectionsPage() {
   const session = await getSession();
+  if (session?.role === "LEAD_TAGGER") {
+    redirect("/leads");
+  }
+
   const isAdmin = session?.role === "ADMIN";
 
-  const [connections, unmapped, brands] = await Promise.all([
+  const [connections, unmapped, brands, users] = await Promise.all([
     prisma.adConnection.findMany(),
     prisma.campaign.findMany({ where: { brandPageId: null } }),
-    prisma.brand.findMany()
+    prisma.brand.findMany(),
+    isAdmin 
+      ? prisma.user.findMany({ 
+          select: { id: true, email: true, role: true, createdAt: true }, 
+          orderBy: { createdAt: "desc" } 
+        })
+      : Promise.resolve([])
   ]);
 
   // List of valid products for campaign mapping & seasonal rules
@@ -173,6 +185,10 @@ export default async function ConnectionsPage() {
       
       {unmapped.length > 0 && isAdmin && (
         <UnmappedCampaigns campaigns={unmapped} brands={brands} products={products} />
+      )}
+
+      {isAdmin && (
+        <TeamManagement initialUsers={users} currentUserId={session?.id} />
       )}
     </div>
   );

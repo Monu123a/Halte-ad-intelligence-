@@ -1,9 +1,28 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
+function parseJwtPayload(token: string): { role?: string; email?: string } | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split("")
+        .map(c => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join("")
+    );
+    return JSON.parse(jsonPayload);
+  } catch {
+    return null;
+  }
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const token = req.cookies.get("session")?.value;
+  const payload = token ? parseJwtPayload(token) : null;
+  const isLeadTagger = payload?.role === "LEAD_TAGGER";
 
   // Allow auth, webhook, and cron API routes
   if (
@@ -17,7 +36,7 @@ export async function middleware(req: NextRequest) {
   // Public routes
   if (pathname === "/login") {
     if (token) {
-      return NextResponse.redirect(new URL("/", req.url));
+      return NextResponse.redirect(new URL(isLeadTagger ? "/leads" : "/", req.url));
     }
     return NextResponse.next();
   }
@@ -27,10 +46,20 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  // To enforce Admin roles strictly, we might decode JWT here. 
-  // However, edge runtime doesn't support jsonwebtoken easily.
-  // The actual action endpoints (e.g. Meta OAuth connect, sync trigger) 
-  // should verify the session role using `getSession()` in the route handler.
+  // Restrict LEAD_TAGGER: locked to /leads and /api/leads only
+  if (isLeadTagger) {
+    const isAllowed = 
+      pathname === "/leads" || 
+      pathname.startsWith("/leads/") || 
+      pathname.startsWith("/api/leads");
+
+    if (!isAllowed) {
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json({ error: "Forbidden: Access restricted to Lead Tagging" }, { status: 403 });
+      }
+      return NextResponse.redirect(new URL("/leads", req.url));
+    }
+  }
   
   return NextResponse.next();
 }
