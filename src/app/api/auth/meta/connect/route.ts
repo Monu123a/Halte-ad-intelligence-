@@ -9,8 +9,13 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 });
   }
 
-  const connector = new MetaAdsConnector();
-  const state = Math.random().toString(36).substring(7); // In prod, save state to session/cookie and verify
+  const urlObj = new URL(req.url);
+  const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || urlObj.host;
+  const protocol = host.includes("localhost") ? "http" : "https";
+  const dynamicRedirectUri = `${protocol}://${host}/api/auth/meta/callback`;
+
+  const connector = new MetaAdsConnector(process.env.META_REDIRECT_URI || dynamicRedirectUri);
+  const state = Math.random().toString(36).substring(7);
   const url = connector.getAuthUrl(state);
   
   return NextResponse.redirect(url);

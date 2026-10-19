@@ -17,7 +17,11 @@ export async function GET(req: Request) {
     return NextResponse.redirect(new URL("/connections?error=NoCode", req.url));
   }
 
-  const connector = new MetaAdsConnector();
+  const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || url.host;
+  const protocol = host.includes("localhost") ? "http" : "https";
+  const dynamicRedirectUri = `${protocol}://${host}/api/auth/meta/callback`;
+
+  const connector = new MetaAdsConnector(process.env.META_REDIRECT_URI || dynamicRedirectUri);
   try {
     const { accessToken, expiresAt } = await connector.connect(code);
     const encryptedToken = encrypt(accessToken);

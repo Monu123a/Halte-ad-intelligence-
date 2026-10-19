@@ -4,7 +4,11 @@ export class MetaAdsConnector implements AdPlatformConnector {
   platformId = "meta_ads";
   private appId = process.env.META_APP_ID || "";
   private appSecret = process.env.META_APP_SECRET || "";
-  private redirectUri = process.env.META_REDIRECT_URI || "http://localhost:3000/api/auth/meta/callback";
+  private redirectUri: string;
+
+  constructor(customRedirectUri?: string) {
+    this.redirectUri = customRedirectUri || process.env.META_REDIRECT_URI || "https://halte-ad-intelligence.vercel.app/api/auth/meta/callback";
+  }
 
   getAuthUrl(state: string) {
     return `https://www.facebook.com/v19.0/dialog/oauth?client_id=${this.appId}&redirect_uri=${encodeURIComponent(this.redirectUri)}&state=${state}&scope=ads_management,ads_read,read_insights`;
