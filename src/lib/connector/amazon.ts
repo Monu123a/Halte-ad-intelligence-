@@ -2,12 +2,22 @@ import { AdPlatformConnector, DateRange, AdAccount, RawCampaign, RawAdSet, RawMe
 
 export class AmazonAdsConnector implements AdPlatformConnector {
   platformId = "amazon_ads";
-  private clientId = process.env.AMAZON_CLIENT_ID || "";
-  private clientSecret = process.env.AMAZON_CLIENT_SECRET || "";
-  private redirectUri = process.env.AMAZON_REDIRECT_URI || "http://localhost:3000/api/auth/amazon/callback";
+  private clientId = (process.env.AMAZON_CLIENT_ID || "").replace(/['"]/g, "").trim();
+  private clientSecret = (process.env.AMAZON_CLIENT_SECRET || "").replace(/['"]/g, "").trim();
+  private redirectUri: string;
+
+  constructor(customRedirectUri?: string) {
+    const envUri = (process.env.AMAZON_REDIRECT_URI || "").trim();
+    if (customRedirectUri && !customRedirectUri.includes("localhost")) {
+      this.redirectUri = customRedirectUri;
+    } else if (envUri && !envUri.includes("localhost")) {
+      this.redirectUri = envUri;
+    } else {
+      this.redirectUri = customRedirectUri || envUri || "https://halte-ad-intelligence.vercel.app/api/auth/amazon/callback";
+    }
+  }
 
   getAuthUrl(state: string) {
-    // Amazon OAuth URL for North America
     return `https://apac.account.amazon.com/ap/oa?client_id=${this.clientId}&scope=advertising::campaign_management&response_type=code&redirect_uri=${encodeURIComponent(this.redirectUri)}&state=${state}`;
   }
 

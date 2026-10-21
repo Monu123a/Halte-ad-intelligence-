@@ -13,7 +13,8 @@ export async function GET(req: Request) {
   }
 
   try {
-    const connector = getConnector("AMAZON") as AmazonAdsConnector;
+    const redirectUri = `${url.origin}/api/auth/amazon/callback`;
+    const connector = new AmazonAdsConnector(redirectUri);
     const { accessToken, refreshToken, expiresAt } = await connector.connect(code);
     
     const encryptedToken = encrypt(accessToken);
