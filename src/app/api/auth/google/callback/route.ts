@@ -18,7 +18,8 @@ export async function GET(req: Request) {
     return NextResponse.redirect(new URL("/connections?error=NoCode", req.url));
   }
 
-  const connector = new GoogleAdsConnector();
+  const redirectUri = `${url.origin}/api/auth/google/callback`;
+  const connector = new GoogleAdsConnector(redirectUri);
   try {
     const { accessToken, refreshToken, expiresAt } = await connector.connect(code);
     const encryptedToken = encrypt(accessToken);

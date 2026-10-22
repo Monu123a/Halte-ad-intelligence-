@@ -2,10 +2,21 @@ import { AdPlatformConnector, DateRange, AdAccount, RawCampaign, RawAdSet, RawMe
 
 export class GoogleAdsConnector implements AdPlatformConnector {
   platformId = "google_ads";
-  private clientId = process.env.GOOGLE_CLIENT_ID || "";
-  private clientSecret = process.env.GOOGLE_CLIENT_SECRET || "";
-  private developerToken = process.env.GOOGLE_DEVELOPER_TOKEN || "";
-  private redirectUri = process.env.GOOGLE_REDIRECT_URI || "http://localhost:3000/api/auth/google/callback";
+  private clientId = (process.env.GOOGLE_CLIENT_ID || "").replace(/['"]/g, "").trim();
+  private clientSecret = (process.env.GOOGLE_CLIENT_SECRET || "").replace(/['"]/g, "").trim();
+  private developerToken = (process.env.GOOGLE_DEVELOPER_TOKEN || "").replace(/['"]/g, "").trim();
+  private redirectUri: string;
+
+  constructor(customRedirectUri?: string) {
+    const envUri = (process.env.GOOGLE_REDIRECT_URI || "").trim();
+    if (customRedirectUri && !customRedirectUri.includes("localhost")) {
+      this.redirectUri = customRedirectUri;
+    } else if (envUri && !envUri.includes("localhost")) {
+      this.redirectUri = envUri;
+    } else {
+      this.redirectUri = customRedirectUri || envUri || "https://halte-ad-intelligence.vercel.app/api/auth/google/callback";
+    }
+  }
 
   getAuthUrl(state: string) {
     const scope = encodeURIComponent("https://www.googleapis.com/auth/adwords");
