@@ -2,6 +2,7 @@ import { getDashboardRecommendations, getOverviewStats } from "@/lib/services";
 import { getWebsiteAnalyticsData, formatDuration } from "@/lib/analyticsService";
 import { getMetaOverviewMetrics } from "@/lib/metaBasicMetrics";
 import { getGoogleOverviewMetrics } from "@/lib/googleMetrics";
+import { getAmazonOverviewMetrics } from "@/lib/amazonMetrics";
 import { MetaBasicMetricsOverview } from "@/components/MetaBasicMetricsOverview";
 import prisma from "@/lib/prisma";
 import Link from "next/link";
@@ -22,13 +23,14 @@ async function OverviewContent({ searchParams }: { searchParams: { page?: string
     redirect("/leads");
   }
 
-  const [recommendationsRaw, stats, { overview: webOverview }, brands, metaBasicMetrics, googleBasicMetrics] = await Promise.all([
+  const [recommendationsRaw, stats, { overview: webOverview }, brands, metaBasicMetrics, googleBasicMetrics, amazonBasicMetrics] = await Promise.all([
     getDashboardRecommendations(),
     getOverviewStats(),
     getWebsiteAnalyticsData({ days: 30 }),
     prisma.brand.findMany(),
     getMetaOverviewMetrics(),
-    getGoogleOverviewMetrics()
+    getGoogleOverviewMetrics(),
+    getAmazonOverviewMetrics()
   ]);
 
 
@@ -116,7 +118,7 @@ async function OverviewContent({ searchParams }: { searchParams: { page?: string
       </div>
 
       {/* Basic Metrics Overview (Starting with Meta Reach, Impressions, Clicks, Spend & State/City Filtering) */}
-      <MetaBasicMetricsOverview data={metaBasicMetrics} googleData={googleBasicMetrics} />
+      <MetaBasicMetricsOverview data={metaBasicMetrics} googleData={googleBasicMetrics} amazonData={amazonBasicMetrics} />
 
       <div className="grid grid-cols-5 gap-[1px] bg-stone border border-stone mb-7 rounded-md overflow-hidden">
 
