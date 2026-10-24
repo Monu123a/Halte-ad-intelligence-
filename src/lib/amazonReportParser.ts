@@ -63,8 +63,20 @@ export function parseAmazonReportBuffer(buffer: Buffer): ParsedAmazonRow[] {
     const campaignName = getVal("Campaign Name", "Campaign name", "Campaign", "campaignName");
     if (!campaignName) continue; // Skip rows without campaign name
 
-    // Parse date (supports Date object, Excel serial number, or date string)
-    const dateRaw = getVal("Date", "Day", "Report Date", "Start Date");
+    // Parse date (supports Date object, Excel serial number, or date string - strictly for daily breakdown, NOT campaign start date)
+    const getDateRaw = () => {
+      for (const k of ["Date", "Day", "Report Date"]) {
+        if (r[k] !== undefined && r[k] !== "") return r[k];
+      }
+      for (const rk of rowKeys) {
+        const normRk = normalize(rk);
+        if (normRk === "date" || normRk === "day" || normRk === "reportdate") {
+          if (r[rk] !== undefined && r[rk] !== "") return r[rk];
+        }
+      }
+      return null;
+    };
+    const dateRaw = getDateRaw();
     let rowDate = new Date();
     if (dateRaw) {
       if (typeof dateRaw === "number" && dateRaw > 20000 && dateRaw < 70000) {
@@ -162,15 +174,49 @@ export async function ingestAmazonReportRows(rows: ParsedAmazonRow[], sourceLabe
     select: { brand: true, subCategory: true }
   });
   
-  const productToBrandMap = new Map<string, string>();
+  const defaultCategoryBrandMap: Record<string, string> = {
+    brushcutter: "BKR",
+    chainsaw: "BKR",
+    lawnmower: "BKR",
+    fogger: "BKR",
+    trimmer: "BKR",
+    trimmerline: "BKR",
+    cutter: "BKR",
+    tiller: "BKR",
+    bkr: "BKR",
+    gardena: "Gardena",
+    hose: "Gardena",
+    hosereel: "Gardena",
+    hosecart: "Gardena",
+    hosestand: "Gardena",
+    sprayer: "Gardena",
+    watering: "Gardena",
+    velcro: "Velcro",
+    mountingtape: "Velcro",
+    cord: "Velcro",
+    gorilla: "Gorilla",
+  };
+
+  const productToBrandMap = new Map<string, string>(Object.entries(defaultCategoryBrandMap));
   history.forEach(h => {
     if (h.subCategory && h.brand) productToBrandMap.set(h.subCategory.toLowerCase(), h.brand);
   });
 
+  // Helper for bounded parallel execution
+  const pMap = async <T, R>(items: T[], fn: (item: T) => Promise<R>, concurrency = 12): Promise<R[]> => {
+    const results: R[] = [];
+    for (let i = 0; i < items.length; i += concurrency) {
+      const chunk = items.slice(i, i + concurrency);
+      const chunkRes = await Promise.all(chunk.map(fn));
+      results.push(...chunkRes);
+    }
+    return results;
+  };
+
   // 3. Group rows by campaign
   const campaignNames = Array.from(new Set(rows.map(r => r.campaignName)));
 
-  for (const cName of campaignNames) {
+  await pMap(campaignNames, async (cName) => {
     const cRows = rows.filter(r => r.campaignName === cName);
     const searchString = cName.toLowerCase();
     let detectedBrand: string | null = null;
@@ -267,7 +313,7 @@ export async function ingestAmazonReportRows(rows: ParsedAmazonRow[], sourceLabe
         }
       });
     }
-  }
+  }, 12);
 
   return {
     connectionId: conn.id,
