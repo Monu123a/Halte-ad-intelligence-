@@ -60,6 +60,7 @@ export async function POST(req: Request) {
 
   let createdCount = 0;
   let updatedCount = 0;
+  const processedKeys = new Map<string, string>(); // key -> lead.id
 
   for (const l of leads) {
     const mappedAdSetId = l.adSetId ? adSetMap.get(l.adSetId) : null;
@@ -71,8 +72,18 @@ export async function POST(req: Request) {
     const platform = l.platform || meta.platform;
     const accountName = l.accountName || meta.accountName;
 
+    const dedupKey = phoneRaw || contactRef.toLowerCase().trim();
+
     let existingLead = null;
-    if (phoneRaw) {
+
+    // First check if already touched in this batch
+    if (processedKeys.has(dedupKey)) {
+      const existingId = processedKeys.get(dedupKey)!;
+      existingLead = await prisma.lead.findUnique({ where: { id: existingId } });
+    }
+
+    // Otherwise check database
+    if (!existingLead && phoneRaw) {
       existingLead = await prisma.lead.findFirst({
         where: {
           OR: [
@@ -80,6 +91,11 @@ export async function POST(req: Request) {
             { contactRef: { contains: phoneRaw } }
           ]
         },
+        orderBy: { createdAt: "desc" }
+      });
+    } else if (!existingLead && contactRef && contactRef !== "Unknown") {
+      existingLead = await prisma.lead.findFirst({
+        where: { contactRef },
         orderBy: { createdAt: "desc" }
       });
     }
@@ -104,9 +120,10 @@ export async function POST(req: Request) {
           updatedAt: new Date()
         }
       });
+      processedKeys.set(dedupKey, existingLead.id);
       updatedCount++;
     } else {
-      await prisma.lead.create({
+      const created = await prisma.lead.create({
         data: {
           contactRef,
           phoneRaw,
@@ -118,6 +135,7 @@ export async function POST(req: Request) {
           adSetId: mappedAdSetId
         }
       });
+      processedKeys.set(dedupKey, created.id);
       createdCount++;
     }
   }

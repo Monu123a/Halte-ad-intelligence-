@@ -320,6 +320,18 @@ export default function LeadsClient({
       const camp = (l.adSet?.campaign?.name || "").toLowerCase();
       return plat === "Instagram Ad" || text.includes("instagram") || acc.startsWith("@") || camp.includes("instagram");
     }).length,
+    INSTAGRAM_BKR: leads.filter(l => {
+      const acc = l.accountName || "";
+      const text = (l.messageText || "").toLowerCase();
+      const camp = (l.adSet?.campaign?.name || "").toLowerCase();
+      return acc.includes("bkr") || text.includes("bkr") || camp.includes("bkr");
+    }).length,
+    INSTAGRAM_GARDENA: leads.filter(l => {
+      const acc = l.accountName || "";
+      const text = (l.messageText || "").toLowerCase();
+      const camp = (l.adSet?.campaign?.name || "").toLowerCase();
+      return acc.includes("gardena") || text.includes("gardena") || camp.includes("gardena");
+    }).length,
     FACEBOOK: leads.filter(l => {
       const plat = l.platform || "";
       const text = (l.messageText || "").toLowerCase();
@@ -349,6 +361,16 @@ export default function LeadsClient({
       const acc = l.accountName || "";
       const camp = (l.adSet?.campaign?.name || "").toLowerCase();
       if (plat !== "Instagram Ad" && !text.includes("instagram") && !acc.startsWith("@") && !camp.includes("instagram")) return false;
+    } else if (channelFilter === "INSTAGRAM_BKR") {
+      const acc = l.accountName || "";
+      const text = (l.messageText || "").toLowerCase();
+      const camp = (l.adSet?.campaign?.name || "").toLowerCase();
+      if (!acc.includes("bkr") && !text.includes("bkr") && !camp.includes("bkr")) return false;
+    } else if (channelFilter === "INSTAGRAM_GARDENA") {
+      const acc = l.accountName || "";
+      const text = (l.messageText || "").toLowerCase();
+      const camp = (l.adSet?.campaign?.name || "").toLowerCase();
+      if (!acc.includes("gardena") && !text.includes("gardena") && !camp.includes("gardena")) return false;
     } else if (channelFilter === "FACEBOOK") {
       const plat = l.platform || "";
       const text = (l.messageText || "").toLowerCase();
@@ -461,7 +483,7 @@ export default function LeadsClient({
       {/* Channel / Destination Filter Bar */}
       <div className="flex flex-wrap items-center gap-2 mb-4 p-2.5 bg-[#F9F8F5] border border-stone rounded-md">
         <span className="text-[11px] font-bold uppercase tracking-wider text-ink-soft mr-1 flex items-center gap-1">
-          <span>📡</span> Receiving Channel:
+          <span>📡</span> Receiving Channel / Account:
         </span>
         <button
           onClick={() => setChannelFilter("ALL")}
@@ -501,8 +523,32 @@ export default function LeadsClient({
               : "bg-white text-ink-soft border-stone hover:text-[#E1306C] hover:border-[#E1306C]/40"
           }`}
         >
-          <span>📸</span> Instagram ({channelCounts.INSTAGRAM})
+          <span>📸</span> All Instagram ({channelCounts.INSTAGRAM})
         </button>
+        {channelCounts.INSTAGRAM_BKR > 0 && (
+          <button
+            onClick={() => setChannelFilter("INSTAGRAM_BKR")}
+            className={`text-[11.5px] font-semibold px-2.5 py-1 rounded-sm border transition-all flex items-center gap-1.5 ${
+              channelFilter === "INSTAGRAM_BKR"
+                ? "bg-[#833ab4] text-white border-[#833ab4] shadow-xs"
+                : "bg-white text-ink-soft border-stone hover:text-[#833ab4] hover:border-[#833ab4]/40"
+            }`}
+          >
+            <span>📸</span> IG: @bkr.machine ({channelCounts.INSTAGRAM_BKR})
+          </button>
+        )}
+        {channelCounts.INSTAGRAM_GARDENA > 0 && (
+          <button
+            onClick={() => setChannelFilter("INSTAGRAM_GARDENA")}
+            className={`text-[11.5px] font-semibold px-2.5 py-1 rounded-sm border transition-all flex items-center gap-1.5 ${
+              channelFilter === "INSTAGRAM_GARDENA"
+                ? "bg-[#C13584] text-white border-[#C13584] shadow-xs"
+                : "bg-white text-ink-soft border-stone hover:text-[#C13584] hover:border-[#C13584]/40"
+            }`}
+          >
+            <span>📸</span> IG: @gardena.india ({channelCounts.INSTAGRAM_GARDENA})
+          </button>
+        )}
         <button
           onClick={() => setChannelFilter("FACEBOOK")}
           className={`text-[11.5px] font-semibold px-2.5 py-1 rounded-sm border transition-all flex items-center gap-1.5 ${
@@ -552,8 +598,43 @@ export default function LeadsClient({
             <div key={lead.id} className="bg-card py-4 px-5 flex justify-between items-start gap-4 hover:bg-stone/5 transition-colors">
               <div className="min-w-0 flex-1">
                 <div className="text-[13.5px] leading-relaxed">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold">{lead.contactRef}</span>
+                  <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                    {/* Primary Channel & Inbox Tag */}
+                    {instanceName?.includes("Phone 1") && instanceName?.includes("Phone 2") && (
+                      <span className="px-2 py-0.5 rounded text-[10.5px] font-bold bg-[#128C7E] text-white flex items-center gap-1 shadow-2xs">
+                        <span>📱</span> WhatsApp (Phone 1 &amp; 2)
+                      </span>
+                    )}
+                    {instanceName?.includes("Phone 1") && !instanceName?.includes("Phone 2") && (
+                      <span className="px-2 py-0.5 rounded text-[10.5px] font-bold bg-[#128C7E] text-white flex items-center gap-1 shadow-2xs">
+                        <span>📱</span> WhatsApp Phone 1
+                      </span>
+                    )}
+                    {instanceName?.includes("Phone 2") && !instanceName?.includes("Phone 1") && (
+                      <span className="px-2 py-0.5 rounded text-[10.5px] font-bold bg-[#075E54] text-white flex items-center gap-1 shadow-2xs">
+                        <span>📱</span> WhatsApp Phone 2
+                      </span>
+                    )}
+
+                    {/* Exact Instagram / Facebook / Web Account attribution */}
+                    {platformName === "Instagram Ad" && (
+                      <span className="px-2 py-0.5 rounded text-[10.5px] font-bold bg-gradient-to-r from-[#833ab4] to-[#fd1d1d] text-white flex items-center gap-1 shadow-2xs">
+                        <span>📸</span> {accountName ? `IG: ${accountName}` : "Instagram Ad"}
+                      </span>
+                    )}
+                    {platformName === "Facebook Ad" && (
+                      <span className="px-2 py-0.5 rounded text-[10.5px] font-bold bg-[#1877F2] text-white flex items-center gap-1 shadow-2xs">
+                        <span>🔵</span> {accountName ? `FB: ${accountName}` : "Facebook Ad"}
+                      </span>
+                    )}
+                    {platformName === "Halte.in Web" && (
+                      <span className="px-2 py-0.5 rounded text-[10.5px] font-bold bg-green text-white flex items-center gap-1 shadow-2xs">
+                        <span>🌐</span> Website (Halte.in)
+                      </span>
+                    )}
+
+                    <span className="font-semibold text-ink text-[13.5px] ml-0.5">{lead.contactRef}</span>
+
                     {hasMultipleMessages && (
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-stone/25 text-stone-dark font-mono">
                         {messages.length || lead.messagesCount} msgs

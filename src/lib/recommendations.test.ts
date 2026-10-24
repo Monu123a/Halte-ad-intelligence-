@@ -11,9 +11,9 @@ describe("recommendation math", () => {
 
   test("generates tercile rankings correctly", () => {
     const adSets: AdSetStats[] = [
-      { adSetId: "1", spend: 1000, genuineLeads: 100, convertedLeads: 0, brandId: "brandA", isSeasonalBrand: false }, // cpgl = 10
-      { adSetId: "2", spend: 1000, genuineLeads: 50, convertedLeads: 0, brandId: "brandA", isSeasonalBrand: false },  // cpgl = 20
-      { adSetId: "3", spend: 1000, genuineLeads: 20, convertedLeads: 0, brandId: "brandA", isSeasonalBrand: false },  // cpgl = 50
+      { adSetId: "1", spend: 1000, clicks: 100, genuineLeads: 100, convertedLeads: 0, brandId: "brandA", isSeasonalBrand: false }, // cpgl = 10
+      { adSetId: "2", spend: 1000, clicks: 100, genuineLeads: 50, convertedLeads: 0, brandId: "brandA", isSeasonalBrand: false },  // cpgl = 20
+      { adSetId: "3", spend: 1000, clicks: 100, genuineLeads: 20, convertedLeads: 0, brandId: "brandA", isSeasonalBrand: false },  // cpgl = 50
     ];
     
     const recs = generateRecommendations(adSets, {}, 1);
@@ -30,7 +30,7 @@ describe("recommendation math", () => {
 
   test("applies seasonal holding correctly", () => {
     const adSets: AdSetStats[] = [
-      { adSetId: "1", spend: 100, genuineLeads: 100, convertedLeads: 0, brandId: "brandA", isSeasonalBrand: true, product: "Snow Chains", region: "South" },
+      { adSetId: "1", spend: 100, clicks: 50, genuineLeads: 100, convertedLeads: 0, brandId: "brandA", isSeasonalBrand: true, products: ["Snow Chains"], region: "South" },
     ];
     
     const lookup: SeasonalLookup = {

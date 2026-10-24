@@ -169,6 +169,26 @@ export async function POST(req: Request) {
   let insertedCount = 0;
   let updatedCount = 0;
 
+// In-memory lock map to serialize concurrent webhook events for the same contact/number
+const leadLocks = new Map<string, Promise<void>>();
+async function runWithLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const current = leadLocks.get(key) || Promise.resolve();
+  let release: () => void;
+  const p = new Promise<void>((resolve) => { release = resolve; });
+  const next = current.then(() => p);
+  leadLocks.set(key, next);
+
+  try {
+    await current;
+    return await fn();
+  } finally {
+    release!();
+    if (leadLocks.get(key) === next) {
+      leadLocks.delete(key);
+    }
+  }
+}
+
   for (const l of rawLeads) {
     const adSetRef = String(l.adSetId || l.adset_id || l.ad_id || l.source_id || "");
     let mappedAdSetId = adSetRef ? adSetMap.get(adSetRef) || null : null;
@@ -188,72 +208,76 @@ export async function POST(req: Request) {
     const platform = meta.platform;
     const accountName = meta.accountName;
 
-    // Check for existing lead by phone number
-    let existingLead = null;
-    if (phoneRaw) {
-      existingLead = await prisma.lead.findFirst({
-        where: {
-          OR: [
-            { phoneRaw },
-            { contactRef: { contains: phoneRaw } }
-          ]
-        },
-        orderBy: { createdAt: "desc" }
-      });
-    } else if (contactRef && contactRef !== "Unknown") {
-      existingLead = await prisma.lead.findFirst({
-        where: { contactRef },
-        orderBy: { createdAt: "desc" }
-      });
-    }
+    const lockKey = phoneRaw || contactRef.toLowerCase().trim();
 
-    if (existingLead) {
-      // Append new message if not already present
-      const prevText = existingLead.messageText || "";
-      let combinedText = prevText;
-      if (messageText && !prevText.includes(messageText.trim())) {
-        combinedText = prevText ? `${prevText}\n---\n${messageText.trim()}` : messageText.trim();
+    await runWithLock(lockKey, async () => {
+      // Check for existing lead by phone number or contactRef
+      let existingLead = null;
+      if (phoneRaw) {
+        existingLead = await prisma.lead.findFirst({
+          where: {
+            OR: [
+              { phoneRaw },
+              { contactRef: { contains: phoneRaw } }
+            ]
+          },
+          orderBy: { createdAt: "desc" }
+        });
+      } else if (contactRef && contactRef !== "Unknown") {
+        existingLead = await prisma.lead.findFirst({
+          where: { contactRef },
+          orderBy: { createdAt: "desc" }
+        });
       }
 
-      // Determine combined instance
-      let combinedInstance = existingLead.instance;
-      if (instance && existingLead.instance && existingLead.instance !== instance) {
-        if (!existingLead.instance.includes(instance)) {
-          combinedInstance = `${existingLead.instance} & ${instance}`;
+      if (existingLead) {
+        // Append new message if not already present
+        const prevText = existingLead.messageText || "";
+        let combinedText = prevText;
+        if (messageText && !prevText.includes(messageText.trim())) {
+          combinedText = prevText ? `${prevText}\n---\n${messageText.trim()}` : messageText.trim();
         }
-      } else if (instance) {
-        combinedInstance = instance;
-      }
 
-      await prisma.lead.update({
-        where: { id: existingLead.id },
-        data: {
-          phoneRaw: existingLead.phoneRaw || phoneRaw,
-          instance: combinedInstance,
-          platform: platform !== "WhatsApp Direct" ? platform : existingLead.platform,
-          accountName: accountName || existingLead.accountName,
-          messageText: combinedText,
-          messagesCount: { increment: 1 },
-          adSetId: existingLead.adSetId || mappedAdSetId,
-          updatedAt: new Date()
+        // Determine combined instance (e.g. Phone 1 & Phone 2)
+        let combinedInstance = existingLead.instance;
+        if (instance && existingLead.instance && existingLead.instance !== instance) {
+          if (!existingLead.instance.includes(instance)) {
+            combinedInstance = `${existingLead.instance} & ${instance}`;
+          }
+        } else if (instance) {
+          combinedInstance = instance;
         }
-      });
-      updatedCount++;
-    } else {
-      await prisma.lead.create({
-        data: {
-          contactRef,
-          phoneRaw,
-          instance,
-          platform,
-          accountName,
-          messageText,
-          messagesCount: 1,
-          adSetId: mappedAdSetId
-        }
-      });
-      insertedCount++;
-    }
+
+        await prisma.lead.update({
+          where: { id: existingLead.id },
+          data: {
+            phoneRaw: existingLead.phoneRaw || phoneRaw,
+            instance: combinedInstance,
+            platform: platform !== "WhatsApp Direct" ? platform : existingLead.platform,
+            accountName: accountName || existingLead.accountName,
+            messageText: combinedText,
+            messagesCount: { increment: 1 },
+            adSetId: existingLead.adSetId || mappedAdSetId,
+            updatedAt: new Date()
+          }
+        });
+        updatedCount++;
+      } else {
+        await prisma.lead.create({
+          data: {
+            contactRef,
+            phoneRaw,
+            instance,
+            platform,
+            accountName,
+            messageText,
+            messagesCount: 1,
+            adSetId: mappedAdSetId
+          }
+        });
+        insertedCount++;
+      }
+    });
   }
 
   try {

@@ -17,6 +17,7 @@ export function Sidebar({ user }: { user?: { email: string; role: string } | nul
     { label: "Geo Intelligence", href: "/geo", requiresAdmin: true },
     { label: "Brand Report", href: "/brand/Gardena", requiresAdmin: true },
     { label: "Lead Tagging", href: "/leads", requiresAdmin: false },
+    { label: "Download Reports", href: "/reports", requiresAdmin: true },
     { label: "Connections", href: "/connections", requiresAdmin: true },
   ];
 

@@ -63,8 +63,24 @@ export async function getLeadsData(currentTag: string = "UNTAGGED", query: strin
     }
   });
 
-  cacheLeads.set(cacheKey, { data: leads, expiresAt: now + 30000 });
-  return leads;
+  const { normalizePhone } = await import("@/lib/leadMatcher");
+  const uniqueMap = new Map<string, typeof leads[0]>();
+  for (const l of leads) {
+    const key = normalizePhone(l.phoneRaw) || normalizePhone(l.contactRef) || l.contactRef.trim().toLowerCase();
+    if (!uniqueMap.has(key)) {
+      uniqueMap.set(key, { ...l });
+    } else {
+      const existing = uniqueMap.get(key)!;
+      if (l.messageText && existing.messageText && !existing.messageText.includes(l.messageText.trim())) {
+        existing.messageText = `${existing.messageText}\n---\n${l.messageText.trim()}`;
+      }
+      existing.messagesCount = (existing.messagesCount || 1) + (l.messagesCount || 1);
+    }
+  }
+  const uniqueLeads = Array.from(uniqueMap.values());
+
+  cacheLeads.set(cacheKey, { data: uniqueLeads, expiresAt: now + 30000 });
+  return uniqueLeads;
 }
 
 export async function getDashboardRecommendations() {
