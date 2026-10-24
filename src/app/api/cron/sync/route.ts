@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { runMetaSync } from "@/lib/sync/metaSync";
 import { runGoogleSync } from "@/lib/sync/googleSync";
+import { runAmazonSync } from "@/lib/sync/amazonSync";
 import { runWebsiteAnalyticsSync } from "@/lib/sync/websiteAnalyticsSync";
 import { runGeoSync } from "@/lib/sync/geoSync";
 
@@ -28,6 +29,9 @@ export async function GET(req: Request) {
         } else if (conn.platform === "GOOGLE") {
           await runGoogleSync(conn.id);
           results.push({ id: conn.id, platform: "GOOGLE", label: conn.label, status: "success" });
+        } else if (conn.platform === "AMAZON") {
+          await runAmazonSync(conn.id);
+          results.push({ id: conn.id, platform: "AMAZON", label: conn.label, status: "success" });
         }
       } catch (err: any) {
         console.error(`[Cron Sync Error] ${conn.platform} ${conn.id}:`, err);

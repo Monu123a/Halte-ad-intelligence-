@@ -3,6 +3,7 @@ import { getConnector } from "@/lib/connector/registry";
 import { AmazonAdsConnector } from "@/lib/connector/amazon";
 import prisma from "@/lib/prisma";
 import { encrypt } from "@/lib/crypto";
+import { runAmazonSync } from "@/lib/sync/amazonSync";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -24,7 +25,7 @@ export async function GET(req: Request) {
     const accounts = await connector.fetchAdAccounts(accessToken);
 
     for (const acc of accounts) {
-      await prisma.adConnection.upsert({
+      const saved = await prisma.adConnection.upsert({
         where: { platformAccountId: acc.id },
         update: {
           accessTokenEnc: encryptedToken,
@@ -48,6 +49,8 @@ export async function GET(req: Request) {
           metadata: acc.metadata ? JSON.stringify(acc.metadata) : null
         }
       });
+
+      runAmazonSync(saved.id).catch((err) => console.error("Initial Amazon sync error:", err));
     }
 
     return NextResponse.redirect(new URL("/connections", req.url));

@@ -114,16 +114,194 @@ export class AmazonAdsConnector implements AdPlatformConnector {
     }));
   }
 
-  async fetchCampaigns(accessToken: string, adAccountId: string): Promise<RawCampaign[]> {
-    return [];
+  private getBaseUrl(countryCode?: string): string {
+    if (countryCode && ["UK", "GB", "DE", "FR", "IT", "ES", "NL", "AE", "SA", "SE", "PL", "EG", "TR"].includes(countryCode.toUpperCase())) {
+      return "https://advertising-api-eu.amazon.com";
+    }
+    if (countryCode && ["US", "CA", "MX", "BR"].includes(countryCode.toUpperCase())) {
+      return "https://advertising-api.amazon.com";
+    }
+    // Default to APAC / Far East (India IN, JP, AU, SG)
+    return "https://advertising-api-fe.amazon.com";
   }
 
-  async fetchAdSets(accessToken: string, adAccountId: string): Promise<RawAdSet[]> {
-    return [];
+  async fetchCampaigns(accessToken: string, adAccountId: string, metadata?: any): Promise<RawCampaign[]> {
+    const baseUrl = this.getBaseUrl(metadata?.countryCode);
+    const headers = {
+      "Authorization": `Bearer ${accessToken}`,
+      "Amazon-Advertising-API-ClientId": this.clientId,
+      "Amazon-Advertising-API-Scope": adAccountId,
+      "Content-Type": "application/json"
+    };
+
+    const campaigns: RawCampaign[] = [];
+
+    // 1. Sponsored Products (SP)
+    try {
+      const res = await fetch(`${baseUrl}/v2/sp/campaigns`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          for (const c of data) {
+            campaigns.push({
+              id: c.campaignId.toString(),
+              name: c.name,
+              objective: "Sponsored Products",
+              rawResponse: c
+            });
+          }
+        }
+      }
+    } catch (e: any) {
+      console.warn("Could not fetch Amazon SP campaigns:", e.message);
+    }
+
+    // 2. Sponsored Brands (SB / HSA)
+    try {
+      const res = await fetch(`${baseUrl}/v2/hsa/campaigns`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          for (const c of data) {
+            campaigns.push({
+              id: c.campaignId.toString(),
+              name: c.name,
+              objective: "Sponsored Brands",
+              rawResponse: c
+            });
+          }
+        }
+      }
+    } catch (e: any) {
+      console.warn("Could not fetch Amazon SB campaigns:", e.message);
+    }
+
+    // 3. Sponsored Display (SD)
+    try {
+      const res = await fetch(`${baseUrl}/sd/campaigns`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          for (const c of data) {
+            campaigns.push({
+              id: c.campaignId.toString(),
+              name: c.name,
+              objective: "Sponsored Display",
+              rawResponse: c
+            });
+          }
+        }
+      }
+    } catch (e: any) {
+      console.warn("Could not fetch Amazon SD campaigns:", e.message);
+    }
+
+    return campaigns;
   }
 
-  async fetchDailyMetrics(accessToken: string, adAccountId: string, dateRange: DateRange): Promise<RawMetric[]> {
-    return [];
+  async fetchAdSets(accessToken: string, adAccountId: string, metadata?: any): Promise<RawAdSet[]> {
+    const baseUrl = this.getBaseUrl(metadata?.countryCode);
+    const headers = {
+      "Authorization": `Bearer ${accessToken}`,
+      "Amazon-Advertising-API-ClientId": this.clientId,
+      "Amazon-Advertising-API-Scope": adAccountId,
+      "Content-Type": "application/json"
+    };
+
+    const adSets: RawAdSet[] = [];
+
+    // 1. Sponsored Products Ad Groups
+    try {
+      const res = await fetch(`${baseUrl}/v2/sp/adGroups`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          for (const a of data) {
+            adSets.push({
+              id: a.adGroupId.toString(),
+              campaignId: a.campaignId.toString(),
+              name: a.name,
+              rawResponse: a
+            });
+          }
+        }
+      }
+    } catch (e: any) {
+      console.warn("Could not fetch Amazon SP ad groups:", e.message);
+    }
+
+    // 2. Sponsored Display Ad Groups
+    try {
+      const res = await fetch(`${baseUrl}/sd/adGroups`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          for (const a of data) {
+            adSets.push({
+              id: a.adGroupId.toString(),
+              campaignId: a.campaignId.toString(),
+              name: a.name,
+              rawResponse: a
+            });
+          }
+        }
+      }
+    } catch (e: any) {
+      console.warn("Could not fetch Amazon SD ad groups:", e.message);
+    }
+
+    return adSets;
+  }
+
+  async fetchDailyMetrics(accessToken: string, adAccountId: string, dateRange: DateRange, metadata?: any): Promise<RawMetric[]> {
+    const baseUrl = this.getBaseUrl(metadata?.countryCode);
+    const headers = {
+      "Authorization": `Bearer ${accessToken}`,
+      "Amazon-Advertising-API-ClientId": this.clientId,
+      "Amazon-Advertising-API-Scope": adAccountId,
+      "Content-Type": "application/json"
+    };
+
+    const metrics: RawMetric[] = [];
+    const dateStr = dateRange.end.toISOString().split("T")[0].replace(/-/g, "");
+
+    try {
+      const reportRes = await fetch(`${baseUrl}/v2/sp/campaigns/report`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          recordType: "campaigns",
+          reportDate: dateStr,
+          metrics: "cost,impressions,clicks,attributedConversions14d"
+        })
+      });
+      if (reportRes.ok) {
+        const reportInfo = await reportRes.json();
+        if (reportInfo.status === "SUCCESS" && reportInfo.location) {
+          const dlRes = await fetch(reportInfo.location);
+          if (dlRes.ok) {
+            const reportData = await dlRes.json();
+            if (Array.isArray(reportData)) {
+              for (const r of reportData) {
+                metrics.push({
+                  adSetId: `amz_camp_${r.campaignId}`,
+                  date: new Date(dateRange.end),
+                  spend: Number(r.cost || 0),
+                  impressions: Number(r.impressions || 0),
+                  clicks: Number(r.clicks || 0),
+                  conversions: Number(r.attributedConversions14d || 0),
+                  rawResponse: r
+                });
+              }
+            }
+          }
+        }
+      }
+    } catch (e: any) {
+      console.warn("Could not request Amazon SP report:", e.message);
+    }
+
+    return metrics;
   }
 
   async disconnect(connectionId: string) {}
