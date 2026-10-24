@@ -731,10 +731,10 @@ export function MetaBasicMetricsOverview({
                         Ad Orders
                       </div>
                       <div className="font-serif text-[24px] font-semibold text-ink mt-1">
-                        {amazonPreset.orders.toLocaleString()}
+                        {amazonPreset.orders > 0 ? amazonPreset.orders.toLocaleString() : "—"}
                       </div>
                       <div className="text-[11px] text-stone-dark mt-1 font-mono">
-                        Direct units sold
+                        {amazonPreset.orders > 0 ? "Direct units sold" : "Column not in export"}
                       </div>
                     </div>
 
@@ -759,10 +759,10 @@ export function MetaBasicMetricsOverview({
                         Ad Clicks &amp; CTR
                       </div>
                       <div className="font-serif text-[24px] font-semibold text-ink mt-1">
-                        {formatNumber(amazonPreset.clicks)}
+                        {amazonPreset.clicks > 0 ? formatNumber(amazonPreset.clicks) : "—"}
                       </div>
                       <div className="text-[11px] text-stone-dark mt-1 font-mono">
-                        {amazonPreset.ctr}% CTR &middot; ₹{amazonPreset.cpc} CPC
+                        {amazonPreset.clicks > 0 ? `${amazonPreset.ctr}% CTR · ₹${amazonPreset.cpc} CPC` : "Column not in export"}
                       </div>
                     </div>
 

@@ -184,6 +184,7 @@ export default async function ConnectionsPage({
                 <div className="font-serif text-[16px] font-semibold flex items-center gap-2">
                   {conn.platform === "GOOGLE" && <span className="bg-[#FCE8E6] text-[#EA4335] text-[10px] uppercase font-bold px-2 py-0.5 rounded-sm">Google</span>}
                   {conn.platform === "META" && <span className="bg-[#E7F0FF] text-[#1877F2] text-[10px] uppercase font-bold px-2 py-0.5 rounded-sm">Meta</span>}
+                  {conn.platform === "AMAZON" && <span className="bg-[#FEF5E6] text-[#FF9900] text-[10px] uppercase font-bold px-2 py-0.5 rounded-sm">Amazon</span>}
                   {conn.label || `Account ${conn.platformAccountId}`}
                   {!conn.isEnabled && <span className="text-[10px] uppercase font-bold bg-stone px-2 py-0.5 rounded-sm text-ink-soft">Disabled</span>}
                 </div>
