@@ -21,7 +21,8 @@ import {
   BarChart3,
   Target,
   CheckCircle2,
-  ExternalLink
+  ExternalLink,
+  Search
 } from "lucide-react";
 
 export function MetaBasicMetricsOverview({
@@ -35,6 +36,8 @@ export function MetaBasicMetricsOverview({
   const [selectedTimeRange, setSelectedTimeRange] = useState<"all" | "90d" | "30d">("all");
   const [selectedState, setSelectedState] = useState<string>("ALL");
   const [copiedState, setCopiedState] = useState<string | null>(null);
+  const [googleCampaignMode, setGoogleCampaignMode] = useState<"ACTIVE" | "ALL">("ACTIVE");
+  const [googleSearchQuery, setGoogleSearchQuery] = useState<string>("");
 
   const currentPresetData = data[selectedTimeRange];
   const states = currentPresetData.states;
@@ -380,103 +383,174 @@ export function MetaBasicMetricsOverview({
                   </div>
                 </div>
 
-                {/* Active Campaigns Table */}
-                <div className="border border-stone rounded-md overflow-hidden bg-card">
-                  <div className="px-4 py-3 bg-[#FAF9F6] border-b border-stone flex justify-between items-center">
-                    <div className="font-serif text-[15px] font-semibold text-ink flex items-center gap-2">
-                      <span>Active Google Campaigns</span>
-                      <span className="text-[11px] font-mono font-normal px-2 py-0.5 bg-stone/40 rounded text-ink-soft">
-                        {googlePreset.campaigns.length} campaigns
-                      </span>
-                    </div>
-                    <span className="text-[11.5px] text-ink-soft font-mono">
-                      Sorted by Spend
-                    </span>
-                  </div>
+                {/* Google Campaigns Table (Active vs All 137 Campaigns) */}
+                {(() => {
+                  const baseCampaigns = googleCampaignMode === "ACTIVE"
+                    ? googlePreset.campaigns
+                    : (googlePreset.allCampaigns || googlePreset.campaigns);
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-[12px] border-collapse">
-                      <thead>
-                        <tr className="border-b border-stone bg-[#FAF9F6]/50 text-ink-soft font-semibold text-[11px] uppercase tracking-wider">
-                          <th className="py-2.5 px-4">Campaign Name</th>
-                          <th className="py-2.5 px-3">Brand</th>
-                          <th className="py-2.5 px-3">Type</th>
-                          <th className="py-2.5 px-3 text-right">Spend</th>
-                          <th className="py-2.5 px-3 text-right">Impressions</th>
-                          <th className="py-2.5 px-3 text-right">Clicks</th>
-                          <th className="py-2.5 px-3 text-right">CTR</th>
-                          <th className="py-2.5 px-3 text-right">CPC</th>
-                          <th className="py-2.5 px-3 text-right">Conv.</th>
-                          <th className="py-2.5 px-3 text-right">Impression Share</th>
-                          <th className="py-2.5 px-4">Primary Loss Factor</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-stone">
-                        {googlePreset.campaigns.map((c) => (
-                          <tr key={c.id} className="hover:bg-[#FAF9F6]/70 transition-colors">
-                            <td className="py-3 px-4 font-semibold text-ink">
-                              {c.name}
-                            </td>
-                            <td className="py-3 px-3">
-                              <span className={`text-[10.5px] font-semibold px-2 py-0.5 rounded ${
-                                c.brand === "Gardena"
-                                  ? "bg-green-tint text-green"
-                                  : c.brand === "BKR"
-                                  ? "bg-amber-tint text-amber"
-                                  : c.brand === "Velcro"
-                                  ? "bg-rust-tint text-rust"
-                                  : "bg-slate-tint text-slate"
-                              }`}>
-                                {c.brand}
-                              </span>
-                            </td>
-                            <td className="py-3 px-3 text-ink-soft font-mono text-[11px]">
-                              {c.objective === "PERFORMANCE_MAX" ? "Performance Max" : c.objective}
-                            </td>
-                            <td className="py-3 px-3 text-right font-serif font-semibold text-ink">
-                              ₹{c.spend.toLocaleString()}
-                            </td>
-                            <td className="py-3 px-3 text-right font-mono text-ink-soft">
-                              {c.impressions.toLocaleString()}
-                            </td>
-                            <td className="py-3 px-3 text-right font-mono text-ink-soft">
-                              {c.clicks.toLocaleString()}
-                            </td>
-                            <td className="py-3 px-3 text-right font-mono font-medium text-ink">
-                              {c.ctr}%
-                            </td>
-                            <td className="py-3 px-3 text-right font-mono font-medium text-ink">
-                              ₹{c.cpc}
-                            </td>
-                            <td className="py-3 px-3 text-right font-mono font-semibold text-green">
-                              {c.conversions}
-                            </td>
-                            <td className="py-3 px-3 text-right font-serif font-bold text-ink">
-                              {c.avgIS != null ? `${c.avgIS}%` : "—"}
-                            </td>
-                            <td className="py-3 px-4">
-                              {c.avgLostBudget != null && c.avgLostBudget > 25 ? (
-                                <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded bg-amber-tint text-amber border border-amber/20">
-                                  Budget Limited ({c.avgLostBudget}%)
-                                </span>
-                              ) : c.avgLostRank != null && c.avgLostRank > 50 ? (
-                                <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded bg-rust-tint text-rust border border-rust/20">
-                                  Ad Rank Limited ({c.avgLostRank}%)
-                                </span>
-                              ) : c.avgIS != null ? (
-                                <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded bg-green-tint text-green border border-green/20">
-                                  Healthy Share ({c.avgIS}%)
-                                </span>
-                              ) : (
-                                <span className="text-stone-dark text-[11px]">—</span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                  const filteredCampaigns = googleSearchQuery.trim()
+                    ? baseCampaigns.filter((c) =>
+                        c.name.toLowerCase().includes(googleSearchQuery.toLowerCase()) ||
+                        c.brand.toLowerCase().includes(googleSearchQuery.toLowerCase()) ||
+                        c.objective.toLowerCase().includes(googleSearchQuery.toLowerCase())
+                      )
+                    : baseCampaigns;
+
+                  return (
+                    <div className="border border-stone rounded-md overflow-hidden bg-card">
+                      <div className="px-4 py-3 bg-[#FAF9F6] border-b border-stone flex flex-wrap gap-3 justify-between items-center">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <div className="font-serif text-[15px] font-semibold text-ink flex items-center gap-2">
+                            <span>Google Campaigns</span>
+                            <span className="text-[11px] font-mono font-normal px-2 py-0.5 bg-stone/40 rounded text-ink-soft">
+                              {filteredCampaigns.length} {googleCampaignMode === "ACTIVE" ? "active" : "total"}
+                            </span>
+                          </div>
+
+                          <div className="inline-flex bg-card p-0.5 rounded border border-stone">
+                            <button
+                              onClick={() => setGoogleCampaignMode("ACTIVE")}
+                              className={`px-3 py-1 rounded text-[11px] font-semibold transition-all ${
+                                googleCampaignMode === "ACTIVE"
+                                  ? "bg-slate text-white shadow-2xs"
+                                  : "text-ink-soft hover:text-ink"
+                              }`}
+                            >
+                              Active with Spend ({googlePreset.campaigns.length})
+                            </button>
+                            <button
+                              onClick={() => setGoogleCampaignMode("ALL")}
+                              className={`px-3 py-1 rounded text-[11px] font-semibold transition-all ${
+                                googleCampaignMode === "ALL"
+                                  ? "bg-slate text-white shadow-2xs"
+                                  : "text-ink-soft hover:text-ink"
+                              }`}
+                            >
+                              All Account Campaigns ({googlePreset.totalCampaignsCount || 137})
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <div className="relative">
+                            <Search className="w-3.5 h-3.5 text-ink-soft absolute left-2.5 top-1/2 -translate-y-1/2" />
+                            <input
+                              type="text"
+                              value={googleSearchQuery}
+                              onChange={(e) => setGoogleSearchQuery(e.target.value)}
+                              placeholder={`Search ${googlePreset.totalCampaignsCount || 137} campaigns...`}
+                              className="text-[11.5px] pl-8 pr-3 py-1 bg-card border border-stone rounded outline-none focus:border-slate w-56 transition-colors"
+                            />
+                          </div>
+                          {googleSearchQuery && (
+                            <button
+                              onClick={() => setGoogleSearchQuery("")}
+                              className="text-[11px] text-ink-soft hover:text-ink underline"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
+                        <table className="w-full text-left text-[12px] border-collapse">
+                          <thead className="sticky top-0 bg-[#FAF9F6] shadow-2xs z-10">
+                            <tr className="border-b border-stone text-ink-soft font-semibold text-[11px] uppercase tracking-wider">
+                              <th className="py-2.5 px-4">Campaign Name</th>
+                              <th className="py-2.5 px-3">Brand</th>
+                              <th className="py-2.5 px-3">Type</th>
+                              <th className="py-2.5 px-3 text-right">Spend</th>
+                              <th className="py-2.5 px-3 text-right">Impressions</th>
+                              <th className="py-2.5 px-3 text-right">Clicks</th>
+                              <th className="py-2.5 px-3 text-right">CTR</th>
+                              <th className="py-2.5 px-3 text-right">CPC</th>
+                              <th className="py-2.5 px-3 text-right">Conv.</th>
+                              <th className="py-2.5 px-3 text-right">Impression Share</th>
+                              <th className="py-2.5 px-4">Status &amp; Insights</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-stone">
+                            {filteredCampaigns.length === 0 ? (
+                              <tr>
+                                <td colSpan={11} className="py-8 text-center text-ink-soft">
+                                  No campaigns found matching &ldquo;{googleSearchQuery}&rdquo;
+                                </td>
+                              </tr>
+                            ) : (
+                              filteredCampaigns.map((c) => (
+                                <tr key={c.id} className="hover:bg-[#FAF9F6]/70 transition-colors">
+                                  <td className="py-3 px-4 font-semibold text-ink">
+                                    {c.name}
+                                  </td>
+                                  <td className="py-3 px-3">
+                                    <span className={`text-[10.5px] font-semibold px-2 py-0.5 rounded ${
+                                      c.brand === "Gardena"
+                                        ? "bg-green-tint text-green"
+                                        : c.brand === "BKR"
+                                        ? "bg-amber-tint text-amber"
+                                        : c.brand === "Velcro"
+                                        ? "bg-rust-tint text-rust"
+                                        : "bg-slate-tint text-slate"
+                                    }`}>
+                                      {c.brand}
+                                    </span>
+                                  </td>
+                                  <td className="py-3 px-3 text-ink-soft font-mono text-[11px]">
+                                    {c.objective === "PERFORMANCE_MAX" ? "Performance Max" : c.objective}
+                                  </td>
+                                  <td className="py-3 px-3 text-right font-serif font-semibold text-ink">
+                                    {c.spend > 0 ? `₹${c.spend.toLocaleString()}` : "₹0"}
+                                  </td>
+                                  <td className="py-3 px-3 text-right font-mono text-ink-soft">
+                                    {c.impressions.toLocaleString()}
+                                  </td>
+                                  <td className="py-3 px-3 text-right font-mono text-ink-soft">
+                                    {c.clicks.toLocaleString()}
+                                  </td>
+                                  <td className="py-3 px-3 text-right font-mono font-medium text-ink">
+                                    {c.ctr > 0 ? `${c.ctr}%` : "—"}
+                                  </td>
+                                  <td className="py-3 px-3 text-right font-mono font-medium text-ink">
+                                    {c.cpc > 0 ? `₹${c.cpc}` : "—"}
+                                  </td>
+                                  <td className="py-3 px-3 text-right font-mono font-semibold text-green">
+                                    {c.conversions > 0 ? c.conversions : "—"}
+                                  </td>
+                                  <td className="py-3 px-3 text-right font-serif font-bold text-ink">
+                                    {c.avgIS != null ? `${c.avgIS}%` : "—"}
+                                  </td>
+                                  <td className="py-3 px-4">
+                                    {c.avgLostBudget != null && c.avgLostBudget > 25 ? (
+                                      <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded bg-amber-tint text-amber border border-amber/20">
+                                        Budget Limited ({c.avgLostBudget}%)
+                                      </span>
+                                    ) : c.avgLostRank != null && c.avgLostRank > 50 ? (
+                                      <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded bg-rust-tint text-rust border border-rust/20">
+                                        Ad Rank Limited ({c.avgLostRank}%)
+                                      </span>
+                                    ) : c.avgIS != null ? (
+                                      <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded bg-green-tint text-green border border-green/20">
+                                        Healthy Share ({c.avgIS}%)
+                                      </span>
+                                    ) : c.spend === 0 && c.impressions === 0 ? (
+                                      <span className="text-stone-dark text-[11px] font-mono">
+                                        0 Spend in 30d
+                                      </span>
+                                    ) : (
+                                      <span className="text-stone-dark text-[11px]">—</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })()}
               </>
             );
           })()}

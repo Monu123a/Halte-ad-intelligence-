@@ -26,7 +26,9 @@ export interface GooglePresetMetrics {
   avgIS: number | null;
   avgLostBudget: number | null;
   avgLostRank: number | null;
+  totalCampaignsCount: number;
   campaigns: GoogleCampaignMetric[];
+  allCampaigns: GoogleCampaignMetric[];
 }
 
 export interface GoogleBasicMetricsReport {
@@ -66,7 +68,9 @@ export async function getGoogleOverviewMetrics(): Promise<GoogleBasicMetricsRepo
     avgIS: null,
     avgLostBudget: null,
     avgLostRank: null,
-    campaigns: []
+    totalCampaignsCount: 0,
+    campaigns: [],
+    allCampaigns: []
   };
 
   if (!conn) {
@@ -105,6 +109,7 @@ export async function getGoogleOverviewMetrics(): Promise<GoogleBasicMetricsRepo
     const globalLostRankList: number[] = [];
 
     const campList: GoogleCampaignMetric[] = [];
+    const allCampList: GoogleCampaignMetric[] = [];
 
     for (const c of conn.campaigns) {
       let cSpend = 0;
@@ -144,18 +149,11 @@ export async function getGoogleOverviewMetrics(): Promise<GoogleBasicMetricsRepo
         }
       }
 
-      if (cImp === 0 && cSpend === 0) continue;
-
-      totalSpend += cSpend;
-      totalImp += cImp;
-      totalClicks += cClicks;
-      totalConversions += cConv;
-
       const avgIS = isList.length > 0 ? isList.reduce((a, b) => a + b, 0) / isList.length : null;
       const avgLostBudget = lostBudgetList.length > 0 ? lostBudgetList.reduce((a, b) => a + b, 0) / lostBudgetList.length : null;
       const avgLostRank = lostRankList.length > 0 ? lostRankList.reduce((a, b) => a + b, 0) / lostRankList.length : null;
 
-      campList.push({
+      const campMetric: GoogleCampaignMetric = {
         id: c.id,
         name: c.name,
         objective: c.objective,
@@ -169,10 +167,21 @@ export async function getGoogleOverviewMetrics(): Promise<GoogleBasicMetricsRepo
         avgIS: avgIS != null ? Math.round(avgIS * 10) / 10 : null,
         avgLostBudget: avgLostBudget != null ? Math.round(avgLostBudget * 10) / 10 : null,
         avgLostRank: avgLostRank != null ? Math.round(avgLostRank * 10) / 10 : null
-      });
+      };
+
+      allCampList.push(campMetric);
+
+      if (cImp > 0 || cSpend > 0) {
+        totalSpend += cSpend;
+        totalImp += cImp;
+        totalClicks += cClicks;
+        totalConversions += cConv;
+        campList.push(campMetric);
+      }
     }
 
     campList.sort((a, b) => b.spend - a.spend);
+    allCampList.sort((a, b) => b.spend - a.spend || a.name.localeCompare(b.name));
 
     const nationalCtr = totalImp > 0 ? Math.round((totalClicks / totalImp) * 10000) / 100 : 0;
     const nationalCpc = totalClicks > 0 ? Math.round((totalSpend / totalClicks) * 100) / 100 : 0;
@@ -190,7 +199,9 @@ export async function getGoogleOverviewMetrics(): Promise<GoogleBasicMetricsRepo
       avgIS,
       avgLostBudget,
       avgLostRank,
-      campaigns: campList
+      totalCampaignsCount: conn.campaigns.length,
+      campaigns: campList,
+      allCampaigns: allCampList
     };
   }
 
