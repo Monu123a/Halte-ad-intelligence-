@@ -27,36 +27,68 @@ export function parseAmazonReportBuffer(buffer: Buffer): ParsedAmazonRow[] {
   const parsed: ParsedAmazonRow[] = [];
   const now = new Date();
 
+  const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, "");
+
   for (const r of rows) {
-    // Helper to find column case-insensitively
+    const rowKeys = Object.keys(r);
+
+    // Multi-tiered column lookup: 1) Exact key, 2) Exact normalized, 3) StartsWith / Contains
     const getVal = (...keys: string[]) => {
+      // 1. Exact match
       for (const k of keys) {
         if (r[k] !== undefined && r[k] !== "") return r[k];
-        const lowerKey = k.toLowerCase();
-        for (const actualKey of Object.keys(r)) {
-          if (actualKey.toLowerCase().trim() === lowerKey || actualKey.toLowerCase().includes(lowerKey)) {
-            if (r[actualKey] !== undefined && r[actualKey] !== "") return r[actualKey];
+      }
+      // 2. Exact normalized match (ignoring spaces, casing, punctuation)
+      for (const k of keys) {
+        const normK = normalize(k);
+        for (const rk of rowKeys) {
+          if (normalize(rk) === normK) {
+            if (r[rk] !== undefined && r[rk] !== "") return r[rk];
+          }
+        }
+      }
+      // 3. Prefix or contains match (e.g. "Spend (INR)" matches "Spend")
+      for (const k of keys) {
+        const normK = normalize(k);
+        for (const rk of rowKeys) {
+          const normRk = normalize(rk);
+          if (normRk.startsWith(normK) || normRk.endsWith(normK) || normRk.includes(normK)) {
+            if (r[rk] !== undefined && r[rk] !== "") return r[rk];
           }
         }
       }
       return null;
     };
 
-    const campaignName = getVal("Campaign Name", "Campaign", "campaignName");
+    const campaignName = getVal("Campaign Name", "Campaign name", "Campaign", "campaignName");
     if (!campaignName) continue; // Skip rows without campaign name
 
-    // Parse date
-    const dateRaw = getVal("Date", "Day", "Report Date");
+    // Parse date (supports Date object, Excel serial number, or date string)
+    const dateRaw = getVal("Date", "Day", "Report Date", "Start Date");
     let rowDate = new Date();
     if (dateRaw) {
-      const d = new Date(dateRaw);
-      if (!isNaN(d.getTime())) {
-        rowDate = d;
+      if (typeof dateRaw === "number" && dateRaw > 20000 && dateRaw < 70000) {
+        // Excel serial date format
+        rowDate = new Date((dateRaw - 25569) * 86400 * 1000);
+      } else if (typeof dateRaw === "string") {
+        const trimmed = dateRaw.trim();
+        const parts = trimmed.split(/[\/\-\.]/);
+        if (parts.length === 3 && parts[2].length === 4 && parseInt(parts[0], 10) > 12) {
+          // DD/MM/YYYY format
+          rowDate = new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+        } else {
+          const d = new Date(trimmed);
+          if (!isNaN(d.getTime())) {
+            rowDate = d;
+          }
+        }
+      } else if (dateRaw instanceof Date && !isNaN(dateRaw.getTime())) {
+        rowDate = dateRaw;
       }
     }
 
     const campaignType = getVal("Type", "Campaign Type", "Targeting Type") || "Sponsored Products";
-    const status = getVal("Status", "Campaign Status") || "ENABLED";
+    const status = getVal("Status", "Campaign Status", "State") || "ENABLED";
 
     const cleanNum = (val: any) => {
       if (typeof val === "number") return val;
@@ -69,7 +101,7 @@ export function parseAmazonReportBuffer(buffer: Buffer): ParsedAmazonRow[] {
     const impressions = Math.round(cleanNum(getVal("Impressions", "Impression")));
     const clicks = Math.round(cleanNum(getVal("Clicks", "Click")));
     const spend = cleanNum(getVal("Spend", "Cost"));
-    const orders = Math.round(cleanNum(getVal("7 Day Total Orders", "14 Day Total Orders", "Total Orders", "Orders")));
+    const orders = Math.round(cleanNum(getVal("7 Day Total Orders", "14 Day Total Orders", "Total Orders", "Orders", "Units")));
     const sales = cleanNum(getVal("7 Day Total Sales", "14 Day Total Sales", "Total Sales", "Sales"));
 
     const ctr = impressions > 0 ? (clicks / impressions) * 100 : cleanNum(getVal("CTR", "Click-Through Rate"));
@@ -158,8 +190,10 @@ export async function ingestAmazonReportRows(rows: ParsedAmazonRow[], sourceLabe
     }
 
     const brandObj = detectedBrand ? brands.find(b => b.name === detectedBrand) : null;
-    const cleanId = cName.replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase().substring(0, 40);
-    const platformCampaignId = `amz_${cleanId}`;
+    const rawCampId = cRows[0].raw?.["Campaign ID"] || cRows[0].raw?.["Campaign Id"] || cRows[0].raw?.["campaignId"];
+    const nameHash = Buffer.from(cName).toString("hex").slice(0, 8);
+    const cleanId = cName.replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase().substring(0, 45);
+    const platformCampaignId = rawCampId ? `amz_${rawCampId}` : `amz_${cleanId}_${nameHash}`;
 
     // Upsert Campaign
     const campaign = await prisma.campaign.upsert({
