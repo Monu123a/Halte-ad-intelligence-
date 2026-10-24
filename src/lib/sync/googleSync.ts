@@ -72,8 +72,19 @@ export async function runGoogleSync(connectionId: string) {
     if (h.subCategory && h.brand) productToBrandMap.set(h.subCategory.toLowerCase(), h.brand);
   });
 
+  // Helper for bounded parallel execution
+  const pMap = async <T, R>(items: T[], fn: (item: T) => Promise<R>, concurrency = 12): Promise<R[]> => {
+    const results: R[] = [];
+    for (let i = 0; i < items.length; i += concurrency) {
+      const chunk = items.slice(i, i + concurrency);
+      const chunkRes = await Promise.all(chunk.map(fn));
+      results.push(...chunkRes);
+    }
+    return results;
+  };
+
   // 4. Map & Upsert Campaigns
-  for (const c of rawCampaigns) {
+  await pMap(rawCampaigns, async (c) => {
     const searchString = c.name.toLowerCase();
     let detectedBrand: string | null = null;
     const matchedProducts = new Set<string>();
@@ -111,15 +122,15 @@ export async function runGoogleSync(connectionId: string) {
         products: Array.from(matchedProducts)
       }
     });
-  }
+  });
 
   // 5. Upsert Ad Sets
   const campMap = await prisma.campaign.findMany({ where: { adConnectionId: conn.id } });
   const campIdMap = new Map(campMap.map(c => [c.platformCampaignId, c.id]));
 
-  for (const a of rawAdSets) {
+  await pMap(rawAdSets, async (a) => {
     const parentCampId = campIdMap.get(a.campaignId);
-    if (!parentCampId) continue;
+    if (!parentCampId) return;
     
     await prisma.adSet.upsert({
       where: { platformAdSetId: a.id },
@@ -130,7 +141,21 @@ export async function runGoogleSync(connectionId: string) {
         campaignId: parentCampId
       }
     });
-  }
+  });
+
+  // Ensure campaigns without traditional ad groups (like Performance Max) have a default ad set for metrics
+  await pMap(campMap, async (c) => {
+    const pmaxKey = `pmax_${c.platformCampaignId}`;
+    await prisma.adSet.upsert({
+      where: { platformAdSetId: pmaxKey },
+      update: { name: `${c.name} (Asset Group)` },
+      create: {
+        platformAdSetId: pmaxKey,
+        name: `${c.name} (Asset Group)`,
+        campaignId: c.id
+      }
+    });
+  });
 
   // 6. Upsert Metrics
   const asMap = await prisma.adSet.findMany({ 
@@ -138,9 +163,9 @@ export async function runGoogleSync(connectionId: string) {
   });
   const asIdMap = new Map(asMap.map(a => [a.platformAdSetId, a.id]));
 
-  for (const m of metrics) {
+  await pMap(metrics, async (m) => {
     const parentAdSetId = asIdMap.get(m.adSetId);
-    if (!parentAdSetId) continue;
+    if (!parentAdSetId) return;
     
     await prisma.dailyMetric.upsert({
       where: {
@@ -164,7 +189,7 @@ export async function runGoogleSync(connectionId: string) {
         rawResponse: m.rawResponse || {}
       }
     });
-  }
+  });
 
   await prisma.adConnection.update({
     where: { id: conn.id },

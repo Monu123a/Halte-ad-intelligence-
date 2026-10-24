@@ -95,7 +95,7 @@ export class GoogleAdsConnector implements AdPlatformConnector {
     // Convert CID to plain number string without dashes
     const cleanCid = customerId.replace(/-/g, '');
     
-    const res = await fetch(`https://googleads.googleapis.com/v25/customers/${cleanCid}/googleAds:search`, {
+    const res = await fetch(`https://googleads.googleapis.com/v26/customers/${cleanCid}/googleAds:search`, {
       method: "POST",
       headers,
       body: JSON.stringify({ query })
@@ -114,7 +114,7 @@ export class GoogleAdsConnector implements AdPlatformConnector {
 
   async fetchAdAccounts(accessToken: string): Promise<AdAccount[]> {
     // 1. First get the accessible customers
-    const res = await fetch("https://googleads.googleapis.com/v25/customers:listAccessibleCustomers", {
+    const res = await fetch("https://googleads.googleapis.com/v26/customers:listAccessibleCustomers", {
       headers: {
         "Authorization": `Bearer ${accessToken}`,
         "developer-token": this.developerToken
@@ -204,22 +204,57 @@ export class GoogleAdsConnector implements AdPlatformConnector {
     const start = dateRange.start.toISOString().split('T')[0];
     const end = dateRange.end.toISOString().split('T')[0];
     
-    const query = `
-      SELECT segments.date, ad_group.id, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions 
-      FROM ad_group 
-      WHERE segments.date >= '${start}' AND segments.date <= '${end}'
-    `;
-    const results = await this.executeSearch(accessToken, adAccountId, query, loginCid);
+    const metrics: RawMetric[] = [];
+
+    // 1. Fetch Ad Group level metrics (Search, Shopping, Display, Video)
+    try {
+      const queryAdGroups = `
+        SELECT segments.date, ad_group.id, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions,
+               metrics.search_impression_share, metrics.search_rank_lost_impression_share
+        FROM ad_group 
+        WHERE segments.date >= '${start}' AND segments.date <= '${end}' AND metrics.impressions > 0
+      `;
+      const agResults = await this.executeSearch(accessToken, adAccountId, queryAdGroups, loginCid);
+      for (const r of agResults) {
+        metrics.push({
+          adSetId: r.adGroup.id.toString(),
+          date: new Date(r.segments.date),
+          spend: (r.metrics?.costMicros || 0) / 1000000,
+          impressions: Number(r.metrics?.impressions || 0),
+          clicks: Number(r.metrics?.clicks || 0),
+          conversions: Number(r.metrics?.conversions || 0),
+          rawResponse: r.metrics
+        });
+      }
+    } catch (e: any) {
+      console.warn("Could not fetch ad_group metrics:", e.message);
+    }
+
+    // 2. Fetch Campaign level metrics (Performance Max & overall campaigns)
+    try {
+      const queryCampaigns = `
+        SELECT segments.date, campaign.id, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions,
+               metrics.search_impression_share, metrics.search_budget_lost_impression_share, metrics.search_rank_lost_impression_share 
+        FROM campaign 
+        WHERE segments.date >= '${start}' AND segments.date <= '${end}' AND metrics.impressions > 0
+      `;
+      const campResults = await this.executeSearch(accessToken, adAccountId, queryCampaigns, loginCid);
+      for (const r of campResults) {
+        metrics.push({
+          adSetId: `pmax_${r.campaign.id.toString()}`,
+          date: new Date(r.segments.date),
+          spend: (r.metrics?.costMicros || 0) / 1000000,
+          impressions: Number(r.metrics?.impressions || 0),
+          clicks: Number(r.metrics?.clicks || 0),
+          conversions: Number(r.metrics?.conversions || 0),
+          rawResponse: r.metrics
+        });
+      }
+    } catch (e: any) {
+      console.warn("Could not fetch campaign-level metrics:", e.message);
+    }
     
-    return results.map((r: any) => ({
-      adSetId: r.adGroup.id.toString(),
-      date: new Date(r.segments.date),
-      spend: (r.metrics.costMicros || 0) / 1000000,
-      impressions: r.metrics.impressions || 0,
-      clicks: r.metrics.clicks || 0,
-      conversions: r.metrics.conversions || 0,
-      rawResponse: r.metrics
-    }));
+    return metrics;
   }
 
   async disconnect(connectionId: string) {
