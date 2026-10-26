@@ -14,6 +14,7 @@ export interface AdSetStats {
   objective?: string; // e.g. MESSAGES, LINK_CLICKS, REACH
   optimizationGoal?: string;
   destinationType?: string;
+  platform?: string; // META | GOOGLE | AMAZON
 }
 
 export interface SeasonalLookup {
@@ -81,7 +82,8 @@ export function generateRecommendations(
         costPerGenuine: 0,
         costPerSale: null,
         action: "NOT_RATED",
-        reason: "Awareness campaign (Reach)"
+        reason: "Awareness campaign (Reach)",
+        platform: adset.platform || "META"
       });
     }
 
@@ -93,7 +95,8 @@ export function generateRecommendations(
         costPerGenuine: 0,
         costPerSale: null,
         action: "NOT_RATED",
-        reason: `Not rated - Goal: ${adset.objective || "Unknown"}`
+        reason: `Not rated - Goal: ${adset.objective || "Unknown"}`,
+        platform: adset.platform || "META"
       });
     }
 
@@ -182,7 +185,8 @@ export function generateRecommendations(
           costPerGenuine: adset.cost === Infinity ? 0 : adset.cost, // for link clicks we'll repurpose this field or just use cost
           costPerSale: adset.convertedLeads > 0 ? adset.spend / adset.convertedLeads : null,
           action,
-          reason
+          reason,
+          platform: adset.platform || "META"
         });
       }
 
@@ -194,7 +198,8 @@ export function generateRecommendations(
           costPerGenuine: 0,
           costPerSale: null,
           action: "HOLD",
-          reason: "Zero spend"
+          reason: "Zero spend in period",
+          platform: adset.platform || "META"
         });
       }
     };

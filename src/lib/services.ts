@@ -2,12 +2,12 @@ import prisma from "@/lib/prisma";
 import { generateRecommendations, AdSetStats, SeasonalLookup, isMessagingAdSet } from "@/lib/recommendations";
 
 // 60-second In-Memory Cache to make page switching instant
-let cacheRecommendations: { data: any; expiresAt: number } | null = null;
+const cacheRecommendations = new Map<string, { data: any; expiresAt: number }>();
 let cacheOverviewStats: { data: any; expiresAt: number } | null = null;
 const cacheLeads = new Map<string, { data: any; expiresAt: number }>();
 
 export function invalidateServicesCache() {
-  cacheRecommendations = null;
+  cacheRecommendations.clear();
   cacheOverviewStats = null;
   cacheLeads.clear();
 }
@@ -83,10 +83,19 @@ export async function getLeadsData(currentTag: string = "UNTAGGED", query: strin
   return uniqueLeads;
 }
 
-export async function getDashboardRecommendations() {
+export async function getDashboardRecommendations(range: "30d" | "90d" | "all" = "30d") {
+  const cacheKey = `recs_${range}`;
   const now = Date.now();
-  if (cacheRecommendations && now < cacheRecommendations.expiresAt) {
-    return cacheRecommendations.data;
+  const cached = cacheRecommendations.get(cacheKey);
+  if (cached && now < cached.expiresAt) {
+    return cached.data;
+  }
+
+  let dateSince: Date | null = null;
+  if (range === "30d") {
+    dateSince = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  } else if (range === "90d") {
+    dateSince = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
   }
 
   const [adSets, seasonalRules] = await Promise.all([
@@ -94,10 +103,14 @@ export async function getDashboardRecommendations() {
       select: {
         id: true,
         dailyMetrics: {
+          where: dateSince ? { date: { gte: dateSince } } : undefined,
           select: { spend: true, clicks: true }
         },
         leads: {
-          where: { tag: { not: "UNTAGGED" } },
+          where: {
+            tag: { not: "UNTAGGED" },
+            ...(dateSince ? { createdAt: { gte: dateSince } } : {})
+          },
           select: { tag: true }
         },
         campaign: {
@@ -105,6 +118,9 @@ export async function getDashboardRecommendations() {
             products: true,
             region: true,
             objective: true,
+            adConnection: {
+              select: { platform: true }
+            },
             brand: {
               select: { id: true, isSeasonal: true }
             }
@@ -146,13 +162,12 @@ export async function getDashboardRecommendations() {
         products: adSet.campaign?.products || [],
         region: adSet.campaign?.region || undefined,
         objective: adSet.campaign?.objective || undefined,
+        platform: adSet.campaign?.adConnection?.platform || "META"
       };
     }).filter(s => s.brandId !== "unmapped");
 
-
-
   const result = generateRecommendations(stats, lookup, currentMonth);
-  cacheRecommendations = { data: result, expiresAt: now + 60000 };
+  cacheRecommendations.set(cacheKey, { data: result, expiresAt: now + 60000 });
   return result;
 }
 
