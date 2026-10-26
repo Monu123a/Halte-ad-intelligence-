@@ -124,7 +124,7 @@ export async function getWebsiteAnalyticsData(options: {
   let rows = await prisma.websiteAnalytics.findMany({
     where: whereClause,
     orderBy: { createdAt: "desc" },
-    take: 6000,
+    take: 35000,
   });
 
 
@@ -137,7 +137,7 @@ export async function getWebsiteAnalyticsData(options: {
     rows = await prisma.websiteAnalytics.findMany({
       where: fallbackWhere,
       orderBy: { createdAt: "desc" },
-      take: 10000,
+      take: 35000,
     });
   }
 
@@ -397,7 +397,7 @@ export async function getWebsiteAnalyticsData(options: {
   const totalPagesCount = allPages.length;
   const pagedPages = allPages.slice((page - 1) * pageSize, page * pageSize);
 
-  // Daily trend (last 14 active days)
+  // Daily trend (last 14 consecutive calendar days, continuous without gaps)
   const dayMap = new Map<string, { sessions: Set<string>; pageviews: number }>();
   for (const r of rows) {
     const dk = new Date(r.createdAt).toISOString().slice(0, 10);
@@ -407,17 +407,33 @@ export async function getWebsiteAnalyticsData(options: {
     d.pageviews += 1;
   }
 
-  const sortedDays = Array.from(dayMap.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .slice(-14);
+  const today = new Date();
+  const consecutiveDays: string[] = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(today.getTime() - i * 24 * 60 * 60 * 1000);
+    consecutiveDays.push(d.toISOString().slice(0, 10));
+  }
 
-  const dailyTrend: DailyTrafficPoint[] = sortedDays.map(([date, info]) => {
+  const dailyTrend: DailyTrafficPoint[] = consecutiveDays.map((date) => {
+    const info = dayMap.get(date);
+    const dt = new Date(`${date}T00:00:00`);
+    const label = dt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+    if (!info) {
+      return {
+        date,
+        label,
+        sessions: 0,
+        pageviews: 0,
+        bounceRate: 0,
+      };
+    }
+
     const sessList = Array.from(info.sessions)
       .map((id) => sessionMap.get(id))
       .filter(Boolean) as typeof sessions;
     const bCount = sessList.filter(isSessionBounce).length;
-    const dt = new Date(`${date}T00:00:00`);
-    const label = dt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
     return {
       date,
       label,

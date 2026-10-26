@@ -32,7 +32,7 @@ export async function runWebsiteAnalyticsSync(): Promise<{
 
     let syncedCount = 0;
 
-    for (const r of rows) {
+    const toInsert = rows.map((r: any) => {
       const id = String(r.id || `pv_${r.session_id}_${Math.random().toString(36).slice(2, 6)}`);
       const sessionId = String(r.sessionId || r.session_id || id);
       const visitorId = String(r.visitorId || r.visitor_id || sessionId);
@@ -47,47 +47,39 @@ export async function runWebsiteAnalyticsSync(): Promise<{
         Math.round(Number(r.clicksCount ?? r.clicks_count ?? 0))
       );
       const isExit = Boolean(r.isExit ?? r.is_exit ?? false);
+      const createdAt = r.createdAt ? new Date(r.createdAt) : r.created_at ? new Date(r.created_at) : new Date();
 
-      const existing = await prisma.websiteAnalytics.findUnique({ where: { id } });
+      return {
+        id,
+        sessionId,
+        visitorId,
+        pagePath,
+        pageTitle: r.pageTitle || r.page_title || null,
+        brand: r.brand || null,
+        category: r.category || null,
+        sku: r.sku || null,
+        referrer: r.referrer || "direct",
+        utmSource: r.utmSource || r.utm_source || null,
+        utmMedium: r.utmMedium || r.utm_medium || null,
+        utmCampaign: r.utmCampaign || r.utm_campaign || null,
+        deviceType: r.deviceType || r.device_type || "desktop",
+        timeSpentSec,
+        maxScrollPct,
+        clicksCount,
+        isExit,
+        createdAt,
+        updatedAt: new Date(),
+      };
+    });
 
-      if (existing) {
-        await prisma.websiteAnalytics.update({
-          where: { id },
-          data: {
-            timeSpentSec: Math.max(existing.timeSpentSec, timeSpentSec),
-            maxScrollPct: Math.max(existing.maxScrollPct, maxScrollPct),
-            clicksCount: Math.max(existing.clicksCount, clicksCount),
-            isExit: isExit || existing.isExit,
-            updatedAt: new Date(),
-          },
-        });
-        syncedCount++;
-      } else {
-        await prisma.websiteAnalytics.create({
-          data: {
-            id,
-            sessionId,
-            visitorId,
-            pagePath,
-            pageTitle: r.pageTitle || r.page_title || null,
-            brand: r.brand || null,
-            category: r.category || null,
-            sku: r.sku || null,
-            referrer: r.referrer || "direct",
-            utmSource: r.utmSource || r.utm_source || null,
-            utmMedium: r.utmMedium || r.utm_medium || null,
-            utmCampaign: r.utmCampaign || r.utm_campaign || null,
-            deviceType: r.deviceType || r.device_type || "desktop",
-            timeSpentSec,
-            maxScrollPct,
-            clicksCount,
-            isExit,
-            createdAt: r.createdAt ? new Date(r.createdAt) : r.created_at ? new Date(r.created_at) : new Date(),
-            updatedAt: new Date(),
-          },
-        });
-        syncedCount++;
-      }
+    // Chunk in batches of 1,000 for high-speed insertion
+    for (let i = 0; i < toInsert.length; i += 1000) {
+      const chunk = toInsert.slice(i, i + 1000);
+      const result = await prisma.websiteAnalytics.createMany({
+        data: chunk,
+        skipDuplicates: true,
+      });
+      syncedCount += result.count;
     }
 
     const totalRecords = await prisma.websiteAnalytics.count();
