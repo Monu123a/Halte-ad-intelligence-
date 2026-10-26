@@ -5,6 +5,7 @@ import { runGoogleSync } from "@/lib/sync/googleSync";
 import { runAmazonSync } from "@/lib/sync/amazonSync";
 import { runWebsiteAnalyticsSync } from "@/lib/sync/websiteAnalyticsSync";
 import { runGeoSync } from "@/lib/sync/geoSync";
+import { runAbandonedCartSync } from "@/lib/sync/abandonedCartSync";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +43,14 @@ export async function GET(req: Request) {
     // Sync Halte website telemetry (bounce rate, time spent, scroll depth)
     const webSync = await runWebsiteAnalyticsSync();
 
+    // Sync Halte website abandoned carts for sales recovery
+    let cartSyncResult: any = null;
+    try {
+      cartSyncResult = await runAbandonedCartSync();
+    } catch (e: any) {
+      console.warn("[Cron Sync] CartSync warning:", e.message);
+    }
+
     // Sync Geographical Intelligence Performance across all accounts
     let geoSyncResult: any = null;
     try {
@@ -55,6 +64,7 @@ export async function GET(req: Request) {
       syncedAt: new Date().toISOString(),
       totalConnections: connections.length,
       websiteTelemetrySync: webSync,
+      abandonedCartSync: cartSyncResult,
       geoSync: geoSyncResult,
       results
     });

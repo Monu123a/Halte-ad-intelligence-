@@ -260,3 +260,100 @@ export async function getOverviewStats() {
   return result;
 }
 
+export async function getAbandonedCartsData(options: {
+  status?: string;
+  search?: string;
+  range?: string;
+} = {}) {
+  const { status = "ALL", search = "", range = "30d" } = options;
+
+  let dateFilter: any = {};
+  if (range === "7d") {
+    dateFilter = { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) };
+  } else if (range === "30d") {
+    dateFilter = { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) };
+  } else if (range === "90d") {
+    dateFilter = { gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) };
+  }
+
+  const whereClause: any = {};
+  if (status !== "ALL") {
+    whereClause.status = status;
+  }
+  if (Object.keys(dateFilter).length > 0) {
+    whereClause.cartUpdatedAt = dateFilter;
+  }
+  if (search.trim()) {
+    const q = search.trim();
+    whereClause.OR = [
+      { customerName: { contains: q, mode: "insensitive" } },
+      { customerEmail: { contains: q, mode: "insensitive" } },
+      { customerPhone: { contains: q, mode: "insensitive" } },
+      { phoneRaw: { contains: q, mode: "insensitive" } },
+      { city: { contains: q, mode: "insensitive" } },
+      { state: { contains: q, mode: "insensitive" } },
+      { fullAddress: { contains: q, mode: "insensitive" } },
+    ];
+  }
+
+  const [rawCarts, totalAllCount, allCartsForSummary] = await Promise.all([
+    prisma.abandonedCart.findMany({
+      where: whereClause,
+      orderBy: { cartUpdatedAt: "desc" },
+      take: 300,
+    }),
+    prisma.abandonedCart.count(),
+    prisma.abandonedCart.findMany({
+      select: {
+        cartValue: true,
+        status: true,
+      },
+    }),
+  ]);
+
+  // If table is empty, auto-seed and reload
+  if (totalAllCount === 0) {
+    const { runAbandonedCartSync } = await import("@/lib/sync/abandonedCartSync");
+    await runAbandonedCartSync();
+    return getAbandonedCartsData(options);
+  }
+
+  const totalCartValue = allCartsForSummary.reduce(
+    (sum, c) => sum + Number(c.cartValue || 0),
+    0
+  );
+  const contactedCount = allCartsForSummary.filter(
+    (c) => c.status === "CONTACTED"
+  ).length;
+  const recoveredCount = allCartsForSummary.filter(
+    (c) => c.status === "RECOVERED"
+  ).length;
+  const recoveredValue = allCartsForSummary
+    .filter((c) => c.status === "RECOVERED")
+    .reduce((sum, c) => sum + Number(c.cartValue || 0), 0);
+  const recoveryRate =
+    allCartsForSummary.length > 0
+      ? Math.round((recoveredCount / allCartsForSummary.length) * 100)
+      : 0;
+
+  const carts = rawCarts.map((c) => ({
+    ...c,
+    cartValue: Number(c.cartValue || 0),
+    items: Array.isArray(c.items) ? c.items : [],
+    remarks: Array.isArray(c.remarks) ? c.remarks : [],
+  }));
+
+  return {
+    carts,
+    summary: {
+      totalCount: allCartsForSummary.length,
+      filteredCount: carts.length,
+      totalCartValue,
+      contactedCount,
+      recoveredCount,
+      recoveredValue,
+      recoveryRate,
+    },
+  };
+}
+

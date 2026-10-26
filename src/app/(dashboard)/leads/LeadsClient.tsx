@@ -396,6 +396,23 @@ export default function LeadsClient({
 
   return (
     <div>
+      {/* Tab Switcher between Inbound Leads and Abandoned Carts */}
+      <div className="flex items-center gap-2 mb-4">
+        <span className="text-[12px] font-bold px-3 py-1 rounded bg-slate text-white shadow-xs">
+          WhatsApp &amp; CRM Inbound Leads
+        </span>
+        <Link
+          href="/abandoned-carts"
+          className="text-[12px] font-semibold px-3 py-1 rounded bg-stone-light/60 hover:bg-stone/30 text-slate transition-colors flex items-center gap-1.5 border border-stone/30"
+        >
+          <span>🛒</span>
+          <span>Halte Abandoned Carts Recovery</span>
+          <span className="text-[9.5px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.2 rounded-full uppercase tracking-wider">
+            New Tab
+          </span>
+        </Link>
+      </div>
+
       <div className="flex justify-between items-end mb-8 border-b border-stone pb-5">
         <div>
           <h1 className="font-serif text-[30px] m-0 mb-1 font-semibold">Lead Tagging</h1>

@@ -246,3 +246,44 @@ model GeoMetric {
   @@index([date])
 }
 
+model AbandonedCart {
+  id              String      @id @default(cuid())
+  cartRef         String      @unique // e.g. "halte_cid_123"
+  customerId      Int?
+  customerName    String?
+  customerEmail   String?
+  customerPhone   String?
+  phoneRaw        String?     // Clean 10-digit phone for search & CRM lead cross-referencing
+  addressLine1    String?
+  addressLine2    String?
+  city            String?
+  state           String?
+  zipCode         String?
+  fullAddress     String?
+  cartValue       Decimal     @default(0)
+  itemCount       Int         @default(0)
+  items           Json        // [{ sku, title, main_image, shown_price, quantity, slug, brand }]
+  cartUpdatedAt   DateTime
+  status          CartStatus  @default(ABANDONED)
+  remarks         Json?       // [{ id, remark, added_by, created_at }]
+  recoveryNotes   String?
+  lastContactedAt DateTime?
+  contactedBy     String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([customerId])
+  @@index([customerPhone])
+  @@index([phoneRaw])
+  @@index([customerEmail])
+  @@index([status])
+  @@index([cartUpdatedAt])
+}
+
+enum CartStatus {
+  ABANDONED
+  CONTACTED
+  RECOVERED
+  LOST
+}
+
