@@ -49,8 +49,8 @@ export function extractLeadMetadata(
   const rawText = text || "";
 
   // 1. Phone Instance (e.g. Phone 1, Phone 2, Website)
-  const hasPhone1 = /\[(phone_1|phone 1)\]/i.test(rawText);
-  const hasPhone2 = /\[(phone_2|phone 2)\]/i.test(rawText);
+  const hasPhone1 = /\[[^\]]*(phone_1|phone 1|phone1)[^\]]*\]/i.test(rawText);
+  const hasPhone2 = /\[[^\]]*(phone_2|phone 2|phone2)[^\]]*\]/i.test(rawText);
   
   let phoneInstance: string | null = null;
   if (hasPhone1 && hasPhone2) {
@@ -62,7 +62,10 @@ export function extractLeadMetadata(
   } else {
     const genericMatch = rawText.match(/^\[([^\]]+)\]/);
     if (genericMatch) {
-      phoneInstance = genericMatch[1].replace(/_/g, " ").trim();
+      phoneInstance = genericMatch[1]
+        .replace(/^(team|staff|reply)\s*[:•-]?\s*/i, "")
+        .replace(/_/g, " ")
+        .trim();
     }
   }
 

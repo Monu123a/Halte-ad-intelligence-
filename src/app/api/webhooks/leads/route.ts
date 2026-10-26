@@ -54,10 +54,7 @@ export async function POST(req: Request) {
   // 2a. Evolution API v2 payload format
   if (body && (body.event === "messages.upsert" || body.data?.key)) {
     const data = body.data;
-    const isFromMe = data?.key?.fromMe;
-    if (isFromMe) {
-      return NextResponse.json({ success: true, ignored: true, reason: "Outgoing message from staff" });
-    }
+    const isFromMe = Boolean(data?.key?.fromMe);
 
     const remoteJid = String(data?.key?.remoteJid || "");
     if (remoteJid.includes("status@broadcast") || remoteJid.includes("@g.us")) {
@@ -65,7 +62,7 @@ export async function POST(req: Request) {
     }
 
     const cleanPhone = remoteJid.replace(/@.*$/, "");
-    const pushName = data?.pushName ? String(data.pushName).trim() : "";
+    const pushName = !isFromMe && data?.pushName ? String(data.pushName).trim() : "";
     const contactRef = pushName ? `${pushName} (+${cleanPhone})` : (cleanPhone ? `+${cleanPhone}` : "Unknown");
 
     // Extract rich message text from any WhatsApp message type
@@ -97,15 +94,27 @@ export async function POST(req: Request) {
       text = "[Media / Action message]";
     }
 
+    // Format clean instance name (e.g. Phone 1, Phone 2)
+    const rawInstance = body.instance ? String(body.instance).replace(/_/g, " ").trim() : "";
+    const instanceName = rawInstance 
+      ? (rawInstance.toLowerCase().includes("phone") 
+          ? rawInstance.replace(/\b\w/g, (c: string) => c.toUpperCase()) 
+          : `Phone ${rawInstance.replace(/\b\w/g, (c: string) => c.toUpperCase())}`)
+      : "WhatsApp";
 
-    const instanceLabel = body.instance ? `[${body.instance}] ` : "";
+    // Tag team replies with [Team • Phone X] and incoming with [Phone X]
+    const instanceLabel = isFromMe 
+      ? `[Team • ${instanceName}] ` 
+      : (instanceName ? `[${instanceName}] ` : "");
     const messageText = `${instanceLabel}${text}`;
 
     rawLeads = [
       {
         contactRef,
         messageText,
-        adSetId: null
+        adSetId: null,
+        isFromMe,
+        instance: instanceName
       }
     ];
   } else if (Array.isArray(body)) {
@@ -231,11 +240,16 @@ async function runWithLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
       }
 
       if (existingLead) {
-        // Append new message if not already present
+        // Append new message if not already present (exact message deduplication)
         const prevText = existingLead.messageText || "";
+        const prevMessages = prevText ? prevText.split("\n---\n").map(m => m.trim()) : [];
+        const isDuplicate = messageText ? prevMessages.includes(messageText.trim()) : true;
+
         let combinedText = prevText;
-        if (messageText && !prevText.includes(messageText.trim())) {
+        let newCount = existingLead.messagesCount;
+        if (messageText && !isDuplicate) {
           combinedText = prevText ? `${prevText}\n---\n${messageText.trim()}` : messageText.trim();
+          newCount += 1;
         }
 
         // Determine combined instance (e.g. Phone 1 & Phone 2)
@@ -248,15 +262,24 @@ async function runWithLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
           combinedInstance = instance;
         }
 
+        // Only update contactRef from incoming customer messages (not from staff replies)
+        let updatedContactRef = existingLead.contactRef;
+        if (!l.isFromMe && contactRef && contactRef !== "Unknown") {
+          if (!existingLead.contactRef || existingLead.contactRef === "Unknown" || existingLead.contactRef.startsWith("+")) {
+            updatedContactRef = contactRef;
+          }
+        }
+
         await prisma.lead.update({
           where: { id: existingLead.id },
           data: {
+            contactRef: updatedContactRef,
             phoneRaw: existingLead.phoneRaw || phoneRaw,
             instance: combinedInstance,
             platform: platform !== "WhatsApp Direct" ? platform : existingLead.platform,
             accountName: accountName || existingLead.accountName,
             messageText: combinedText,
-            messagesCount: { increment: 1 },
+            messagesCount: newCount,
             adSetId: existingLead.adSetId || mappedAdSetId,
             updatedAt: new Date()
           }

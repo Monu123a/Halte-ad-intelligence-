@@ -648,11 +648,24 @@ export default function LeadsClient({
                   </div>
 
                   {/* Latest Message Preview */}
-                  {!isExpanded && latestMessage && (
-                    <div className="text-ink-soft mt-1 text-[13px] line-clamp-2">
-                      "{latestMessage}"
-                    </div>
-                  )}
+                  {!isExpanded && latestMessage && (() => {
+                    const isTeam = /\[[^\]]*(team|staff|agent|you|reply|support)/i.test(latestMessage.split("]")[0] || "");
+                    const cleanText = latestMessage.replace(/^\[[^\]]+\]\s*/, "");
+                    return (
+                      <div className="text-ink-soft mt-1 text-[13px] line-clamp-2">
+                        {isTeam ? (
+                          <span className="inline-flex items-center gap-1.5 text-emerald-800">
+                            <span className="text-[9.5px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              ✓ Team Replied
+                            </span>
+                            <span className="text-emerald-900 font-medium">"{cleanText}"</span>
+                          </span>
+                        ) : (
+                          <span>"{cleanText}"</span>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* Thread View Expand/Collapse Toggle */}
                   {hasMultipleMessages && (
@@ -661,27 +674,65 @@ export default function LeadsClient({
                       onClick={() => toggleThread(lead.id)}
                       className="text-[11px] font-semibold text-green hover:underline mt-1.5 flex items-center gap-1 cursor-pointer"
                     >
-                      <span>{isExpanded ? "▲ Hide conversation history" : `▼ View conversation history (${messages.length} messages)`}</span>
+                      <span>{isExpanded ? "▲ Hide conversation thread" : `▼ View conversation thread (${messages.length} messages)`}</span>
                     </button>
                   )}
 
                   {/* Expanded Conversation Thread */}
                   {isExpanded && (
-                    <div className="mt-2.5 space-y-2 bg-[#F6F5F0] border border-stone/70 p-3.5 rounded-md max-h-[320px] overflow-y-auto">
-                      <div className="text-[10.5px] font-bold uppercase tracking-wider text-ink-soft flex justify-between items-center pb-1 border-b border-stone/40">
-                        <span>Customer Conversation History ({messages.length} messages):</span>
-                        <span className="font-mono text-[9.5px]">Earliest: {new Date(lead.createdAt).toLocaleDateString()}</span>
+                    <div className="mt-2.5 space-y-2.5 bg-[#F6F5F0] border border-stone/70 p-3.5 rounded-md max-h-[360px] overflow-y-auto">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-ink-soft flex justify-between items-center pb-1.5 border-b border-stone/40">
+                        <span className="flex items-center gap-2">
+                          <span>Conversation Thread ({messages.length} messages)</span>
+                          <span className="text-[9px] font-normal text-stone-dark flex items-center gap-1 ml-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-stone-dark"></span> Customer
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 ml-1.5"></span> Team Reply
+                          </span>
+                        </span>
+                        <span className="font-mono text-[9px]">Earliest: {new Date(lead.createdAt).toLocaleDateString()}</span>
                       </div>
-                      {messages.map((msg: string, idx: number) => (
-                        <div key={idx} className="bg-white p-2.5 rounded-md border border-stone/40 text-[12.5px] text-ink shadow-2xs">
-                          <div className="text-[10px] font-mono text-stone-dark mb-1 font-semibold flex items-center gap-2">
-                            <span>#{idx + 1}</span>
-                            <span>&bull;</span>
-                            <span className="text-ink-soft">{msg.startsWith("[") ? msg.split("]")[0] + "]" : "Message"}</span>
-                          </div>
-                          <div className="whitespace-pre-wrap leading-relaxed">{msg.replace(/^\[[^\]]+\]\s*/, "")}</div>
-                        </div>
-                      ))}
+                      <div className="space-y-2 pt-1">
+                        {messages.map((msg: string, idx: number) => {
+                          const rawTag = msg.startsWith("[") ? msg.slice(1, msg.indexOf("]")) : "";
+                          const isTeam = /\[[^\]]*(team|staff|agent|you|reply|support)/i.test(msg.split("]")[0] || "");
+                          const cleanTag = isTeam 
+                            ? rawTag.replace(/^(team|staff|reply)\s*[:•-]?\s*/i, "").trim()
+                            : rawTag.trim();
+                          const cleanContent = msg.replace(/^\[[^\]]+\]\s*/, "");
+
+                          if (isTeam) {
+                            return (
+                              <div key={idx} className="flex flex-col items-end pl-6">
+                                <div className="max-w-[85%] bg-[#E7F8E8] border border-[#B3E7BC] text-emerald-950 p-2.5 rounded-lg rounded-tr-xs shadow-2xs">
+                                  <div className="text-[10px] font-mono text-emerald-800 mb-1 font-semibold flex items-center justify-end gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+                                    <span>Team Reply</span>
+                                    {cleanTag && <span>• {cleanTag}</span>}
+                                    <span>&bull;</span>
+                                    <span>#{idx + 1}</span>
+                                  </div>
+                                  <div className="whitespace-pre-wrap leading-relaxed text-[12.5px] font-medium text-emerald-950">{cleanContent}</div>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div key={idx} className="flex flex-col items-start pr-6">
+                              <div className="max-w-[85%] bg-white border border-stone/60 text-ink p-2.5 rounded-lg rounded-tl-xs shadow-2xs">
+                                <div className="text-[10px] font-mono text-stone-dark mb-1 font-semibold flex items-center gap-1.5">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-stone-dark"></span>
+                                  <span>Customer</span>
+                                  {cleanTag && <span>• {cleanTag}</span>}
+                                  <span>&bull;</span>
+                                  <span>#{idx + 1}</span>
+                                </div>
+                                <div className="whitespace-pre-wrap leading-relaxed text-[12.5px] text-ink">{cleanContent}</div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
                 </div>
