@@ -951,7 +951,7 @@ export default function LeadsClient({
                     onChange={(e) => setNewRole(e.target.value as any)}
                     className="w-full text-[12px] p-2 bg-card border border-stone rounded outline-none font-medium"
                   >
-                    <option value="LEAD_TAGGER">Lead Tagger (Tagging Only 🔒)</option>
+                    <option value="LEAD_TAGGER">Lead Tagger (Leads &amp; Abandoned Carts)</option>
                     <option value="ANALYST">Analyst (View Reports &amp; Tag)</option>
                     <option value="ADMIN">Admin (Full Access)</option>
                   </select>

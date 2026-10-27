@@ -46,16 +46,20 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  // Restrict LEAD_TAGGER: locked to /leads and /api/leads only
+  // Restrict LEAD_TAGGER: allowed to access /leads, /abandoned-carts, and their APIs
   if (isLeadTagger) {
     const isAllowed = 
       pathname === "/leads" || 
       pathname.startsWith("/leads/") || 
-      pathname.startsWith("/api/leads");
+      pathname.startsWith("/api/leads") ||
+      pathname === "/abandoned-carts" ||
+      pathname.startsWith("/abandoned-carts/") ||
+      pathname.startsWith("/api/abandoned-carts") ||
+      pathname.startsWith("/api/sync/abandoned-carts");
 
     if (!isAllowed) {
       if (pathname.startsWith("/api/")) {
-        return NextResponse.json({ error: "Forbidden: Access restricted to Lead Tagging" }, { status: 403 });
+        return NextResponse.json({ error: "Forbidden: Access restricted to Lead Tagging and Abandoned Carts" }, { status: 403 });
       }
       return NextResponse.redirect(new URL("/leads", req.url));
     }

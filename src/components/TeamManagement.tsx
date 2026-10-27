@@ -148,7 +148,7 @@ export function TeamManagement({
                 onChange={(e) => setRole(e.target.value as any)}
                 className="w-full text-[13px] px-3 py-2 border border-stone rounded-sm bg-white outline-none focus:border-ink cursor-pointer"
               >
-                <option value="LEAD_TAGGER">Lead Tagger (Lead Tagging Only - Locked Out of Analytics)</option>
+                <option value="LEAD_TAGGER">Lead Tagger (Leads &amp; Abandoned Carts - Sales Recovery)</option>
                 <option value="ADMIN">Admin (Full Access &amp; User Management)</option>
                 <option value="ANALYST">Analyst (Full Analytics &amp; Reports)</option>
               </select>

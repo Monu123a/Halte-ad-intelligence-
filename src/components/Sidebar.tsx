@@ -50,7 +50,7 @@ export function Sidebar({ user }: { user?: { email: string; role: string } | nul
                 <div
                   key={item.href}
                   className="flex items-center justify-between text-[13.5px] py-2.5 px-2 text-stone-dark/40 cursor-not-allowed select-none rounded-sm"
-                  title="Locked: Restricted to Lead Tagging only"
+                  title="Locked: Restricted to Admin/Analyst"
                 >
                   <span className="flex items-center gap-[11px]">
                     <span className="w-[5px] h-[5px] rounded-full shrink-0 bg-stone-dark/30"></span>
