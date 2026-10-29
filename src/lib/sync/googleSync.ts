@@ -52,10 +52,10 @@ export async function runGoogleSync(connectionId: string) {
     } catch {}
   }
 
-  // 2. Fetch recent 30 days
+  // 2. Fetch recent 90 days for full quarterly intelligence
   const endDate = new Date();
   const startDate = new Date();
-  startDate.setDate(startDate.getDate() - 30);
+  startDate.setDate(startDate.getDate() - 90);
 
   const rawCampaigns = await connector.fetchCampaigns(accessToken, conn.platformAccountId, metadata);
   const rawAdSets = await connector.fetchAdSets(accessToken, conn.platformAccountId, metadata);

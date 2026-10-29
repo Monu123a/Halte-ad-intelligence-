@@ -83,19 +83,31 @@ export async function getLeadsData(currentTag: string = "UNTAGGED", query: strin
   return uniqueLeads;
 }
 
-export async function getDashboardRecommendations(range: "30d" | "90d" | "all" = "30d") {
-  const cacheKey = `recs_${range}`;
+export async function getDashboardRecommendations(
+  range: string = "30d",
+  customRange?: { from?: Date; to?: Date }
+) {
+  const cacheKey = customRange?.from 
+    ? `recs_custom_${customRange.from.toISOString()}_${customRange.to?.toISOString()}`
+    : `recs_${range}`;
   const now = Date.now();
   const cached = cacheRecommendations.get(cacheKey);
   if (cached && now < cached.expiresAt) {
     return cached.data;
   }
 
-  let dateSince: Date | null = null;
-  if (range === "30d") {
-    dateSince = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  let dateFilter: any = undefined;
+  if (customRange?.from) {
+    dateFilter = {
+      gte: customRange.from,
+      ...(customRange.to ? { lte: new Date(new Date(customRange.to).setHours(23, 59, 59, 999)) } : {})
+    };
+  } else if (range === "7d") {
+    dateFilter = { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) };
+  } else if (range === "30d") {
+    dateFilter = { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) };
   } else if (range === "90d") {
-    dateSince = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    dateFilter = { gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) };
   }
 
   const [adSets, seasonalRules] = await Promise.all([
@@ -103,13 +115,13 @@ export async function getDashboardRecommendations(range: "30d" | "90d" | "all" =
       select: {
         id: true,
         dailyMetrics: {
-          where: dateSince ? { date: { gte: dateSince } } : undefined,
+          where: dateFilter ? { date: dateFilter } : undefined,
           select: { spend: true, clicks: true }
         },
         leads: {
           where: {
             tag: { not: "UNTAGGED" },
-            ...(dateSince ? { createdAt: { gte: dateSince } } : {})
+            ...(dateFilter ? { createdAt: dateFilter } : {})
           },
           select: { tag: true }
         },
@@ -171,14 +183,32 @@ export async function getDashboardRecommendations(range: "30d" | "90d" | "all" =
   return result;
 }
 
-export async function getOverviewStats() {
+export async function getOverviewStats(range: string = "30d", customRange?: { from?: Date; to?: Date }) {
+  const cacheKey = customRange?.from 
+    ? `stats_custom_${customRange.from.toISOString()}_${customRange.to?.toISOString()}`
+    : `stats_${range}`;
   const now = Date.now();
-  if (cacheOverviewStats && now < cacheOverviewStats.expiresAt) {
+  if (cacheOverviewStats && now < cacheOverviewStats.expiresAt && range === "30d" && !customRange?.from) {
     return cacheOverviewStats.data;
+  }
+
+  let dateFilter: any = undefined;
+  if (customRange?.from) {
+    dateFilter = {
+      gte: customRange.from,
+      ...(customRange.to ? { lte: new Date(new Date(customRange.to).setHours(23, 59, 59, 999)) } : {})
+    };
+  } else if (range === "7d") {
+    dateFilter = { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) };
+  } else if (range === "30d") {
+    dateFilter = { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) };
+  } else if (range === "90d") {
+    dateFilter = { gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) };
   }
 
   const aggMetrics = await prisma.dailyMetric.groupBy({
     by: ['adSetId'],
+    where: dateFilter ? { date: dateFilter } : undefined,
     _sum: { spend: true }
   });
 
@@ -225,17 +255,29 @@ export async function getOverviewStats() {
     prisma.lead.count({ 
       where: { 
         tag: { in: ["GENUINE", "CONVERTED"] },
-        adSetId: { in: msgAdSetIdsArray }
+        adSetId: { in: msgAdSetIdsArray },
+        ...(dateFilter ? { createdAt: dateFilter } : {})
       } 
     }),
     prisma.lead.count({
       where: {
         tag: { in: ["GENUINE", "CONVERTED"] },
-        adSetId: { notIn: msgAdSetIdsArray }
+        adSetId: { notIn: msgAdSetIdsArray },
+        ...(dateFilter ? { createdAt: dateFilter } : {})
       }
     }),
-    prisma.lead.count({ where: { tag: "SPAM" } }),
-    prisma.lead.count({ where: { tag: { not: "UNTAGGED" } } }),
+    prisma.lead.count({ 
+      where: { 
+        tag: "SPAM",
+        ...(dateFilter ? { createdAt: dateFilter } : {})
+      } 
+    }),
+    prisma.lead.count({ 
+      where: { 
+        tag: { not: "UNTAGGED" },
+        ...(dateFilter ? { createdAt: dateFilter } : {})
+      } 
+    }),
     prisma.syncLog.findFirst({
       where: { status: "success" },
       orderBy: { finishedAt: "desc" }

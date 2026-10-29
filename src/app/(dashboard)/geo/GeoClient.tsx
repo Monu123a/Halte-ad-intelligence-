@@ -26,6 +26,7 @@ export function GeoClient({ initialData }: { initialData: GeoReportData }) {
   const router = useRouter();
   const [data, setData] = useState<GeoReportData>(initialData);
   const [currentPreset, setCurrentPreset] = useState<string>(initialData.summary.selectedTimeRange || "all");
+  const [currentBrand, setCurrentBrand] = useState<string>(initialData.summary.selectedBrand || "ALL");
   const [search, setSearch] = useState("");
   const [selectedZone, setSelectedZone] = useState("ALL");
   const [sortBy, setSortBy] = useState<"demand" | "leads" | "whatsapp" | "cpl" | "spend">("demand");
@@ -37,13 +38,36 @@ export function GeoClient({ initialData }: { initialData: GeoReportData }) {
   useEffect(() => {
     setData(initialData);
     setCurrentPreset(initialData.summary.selectedTimeRange || "all");
+    setCurrentBrand(initialData.summary.selectedBrand || "ALL");
   }, [initialData]);
 
   const zones = ["ALL", "North", "West", "South", "East", "Central", "North East"];
 
+  const brandList = [
+    { id: "ALL", label: "All Brands", count: data.summary.brandCounts?.ALL || 0, color: "bg-ink text-white", dot: "" },
+    { id: "Gardena", label: "Gardena", count: data.summary.brandCounts?.Gardena || 0, color: "bg-green text-white", dot: "bg-green" },
+    { id: "BKR", label: "BKR", count: data.summary.brandCounts?.BKR || 0, color: "bg-amber text-white", dot: "bg-amber" },
+    { id: "Gorilla", label: "Gorilla", count: data.summary.brandCounts?.Gorilla || 0, color: "bg-slate text-white", dot: "bg-slate" },
+    { id: "Velcro", label: "Velcro", count: data.summary.brandCounts?.Velcro || 0, color: "bg-rust text-white", dot: "bg-rust" },
+    { id: "Halte All", label: "Halte All", count: data.summary.brandCounts?.["Halte All"] || 0, color: "bg-stone-dark text-white", dot: "bg-stone-dark" },
+  ];
+
+  const handleBrandChange = (brand: string) => {
+    setCurrentBrand(brand);
+    const params = new URLSearchParams();
+    if (brand !== "ALL") params.set("brand", brand);
+    if (currentPreset !== "all") params.set("timeRange", currentPreset);
+    const qs = params.toString();
+    router.push(qs ? `/geo?${qs}` : "/geo");
+  };
+
   const handlePresetChange = (preset: "all" | "90d" | "30d") => {
     setCurrentPreset(preset);
-    router.push(preset === "all" ? "/geo" : `/geo?timeRange=${preset}`);
+    const params = new URLSearchParams();
+    if (currentBrand !== "ALL") params.set("brand", currentBrand);
+    if (preset !== "all") params.set("timeRange", preset);
+    const qs = params.toString();
+    router.push(qs ? `/geo?${qs}` : "/geo");
   };
 
   // Filter and sort states
@@ -184,6 +208,49 @@ export function GeoClient({ initialData }: { initialData: GeoReportData }) {
         </div>
       </div>
 
+      {/* Brand-Wise Filter Tabs */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-stone/20 p-2.5 rounded-lg border border-stone">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[12px] font-semibold text-ink-soft mr-1 flex items-center gap-1">
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+            Brand:
+          </span>
+          {brandList.map((b) => (
+            <button
+              key={b.id}
+              onClick={() => handleBrandChange(b.id)}
+              className={`px-3 py-1.5 rounded-md text-[12px] font-semibold flex items-center gap-1.5 transition-all ${
+                currentBrand === b.id
+                  ? `${b.color} shadow-2xs`
+                  : "bg-card text-ink-soft border border-stone hover:text-ink hover:border-slate/40"
+              }`}
+            >
+              {b.dot && currentBrand !== b.id && (
+                <span className={`w-1.5 h-1.5 rounded-full ${b.dot}`}></span>
+              )}
+              <span>{b.label}</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                currentBrand === b.id ? "bg-white/20 text-white" : "bg-stone/50 text-ink-soft"
+              }`}>
+                {b.count}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {currentBrand !== "ALL" && (
+          <div className="text-[11.5px] text-ink-soft flex items-center gap-2">
+            <span>Filtered to: <strong className="text-ink">{currentBrand}</strong></span>
+            <button
+              onClick={() => handleBrandChange("ALL")}
+              className="text-[11px] underline text-rust hover:text-rust/80 font-medium"
+            >
+              Reset to All
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* 2. Executive KPI Strip (Overview Style) */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-[1px] bg-stone border border-stone rounded-md overflow-hidden">
         {/* Metric 1 */}
@@ -194,7 +261,7 @@ export function GeoClient({ initialData }: { initialData: GeoReportData }) {
           </div>
           <div className="text-[12.5px] text-ink-soft mt-1 font-medium">Total Regional Spend</div>
           <div className="text-[11px] text-stone-dark mt-2">
-            {currentPreset === "all" ? "Historical investment" : currentPreset === "90d" ? "Past 90 days total" : "Past 30 days total"}
+            {currentBrand !== "ALL" ? `${currentBrand} attribution` : currentPreset === "all" ? "Historical investment" : currentPreset === "90d" ? "Past 90 days total" : "Past 30 days total"}
           </div>
         </div>
 
@@ -381,6 +448,7 @@ export function GeoClient({ initialData }: { initialData: GeoReportData }) {
       <div className="flex justify-between items-center text-[12.5px] text-ink-soft px-1">
         <div>
           Showing <b>{filteredStates.length}</b> of <b>{data.states.length}</b> regions
+          {currentBrand !== "ALL" && <span> for <b className="text-ink">{currentBrand}</b></span>}
           {selectedZone !== "ALL" && <span> in <b>{selectedZone} Zone</b></span>}
           {search && <span> matching &ldquo;{search}&rdquo;</span>}
         </div>

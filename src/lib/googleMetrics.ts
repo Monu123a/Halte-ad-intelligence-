@@ -39,9 +39,12 @@ export interface GoogleBasicMetricsReport {
   all: GooglePresetMetrics;
   "90d": GooglePresetMetrics;
   "30d": GooglePresetMetrics;
+  "7d": GooglePresetMetrics;
+  custom?: GooglePresetMetrics;
+  [key: string]: any;
 }
 
-export async function getGoogleOverviewMetrics(): Promise<GoogleBasicMetricsReport> {
+export async function getGoogleOverviewMetrics(customRange?: { from?: Date; to?: Date }): Promise<GoogleBasicMetricsReport> {
   const conn = await prisma.adConnection.findFirst({
     where: { platform: "GOOGLE" },
     include: {
@@ -81,16 +84,26 @@ export async function getGoogleOverviewMetrics(): Promise<GoogleBasicMetricsRepo
       lastSyncedAt: null,
       all: emptyPreset,
       "90d": emptyPreset,
-      "30d": emptyPreset
+      "30d": emptyPreset,
+      "7d": emptyPreset,
+      custom: emptyPreset
     };
   }
 
   const now = new Date();
-  const dateRanges = {
-    all: new Date("2020-01-01T00:00:00.000Z"),
-    "90d": new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000),
-    "30d": new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+  const dateRanges: Record<string, { start: Date; end?: Date }> = {
+    all: { start: new Date("2020-01-01T00:00:00.000Z") },
+    "90d": { start: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000) },
+    "30d": { start: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) },
+    "7d": { start: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) }
   };
+
+  if (customRange?.from) {
+    dateRanges["custom"] = {
+      start: customRange.from,
+      end: customRange.to ? new Date(new Date(customRange.to).setHours(23, 59, 59, 999)) : undefined
+    };
+  }
 
   const report: Partial<GoogleBasicMetricsReport> = {
     accountName: conn.label || `Google Ads (${conn.platformAccountId})`,
@@ -99,7 +112,10 @@ export async function getGoogleOverviewMetrics(): Promise<GoogleBasicMetricsRepo
     lastSyncedAt: conn.lastSyncedAt
   };
 
-  for (const [key, minDate] of Object.entries(dateRanges) as Array<[keyof typeof dateRanges, Date]>) {
+  for (const [key, rangeDef] of Object.entries(dateRanges)) {
+    const minDate = rangeDef.start;
+    const maxDate = rangeDef.end;
+
     let totalSpend = 0;
     let totalImp = 0;
     let totalClicks = 0;
@@ -122,7 +138,9 @@ export async function getGoogleOverviewMetrics(): Promise<GoogleBasicMetricsRepo
 
       for (const a of c.adSets) {
         for (const m of a.dailyMetrics) {
-          if (new Date(m.date) < minDate) continue;
+          const mDate = new Date(m.date);
+          if (mDate < minDate) continue;
+          if (maxDate && mDate > maxDate) continue;
 
           const s = Number(m.spend);
           cSpend += s;

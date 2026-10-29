@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { MetaBasicMetricsReport, StateBasicMetric } from "@/lib/metaBasicMetrics";
 import { GoogleBasicMetricsReport } from "@/lib/googleMetrics";
 import { AmazonBasicMetricsReport } from "@/lib/amazonMetrics";
@@ -35,15 +36,20 @@ export function MetaBasicMetricsOverview({
   data,
   googleData,
   amazonData,
-  initialTimeRange = "30d"
+  initialTimeRange = "30d",
+  initialPlatform = "META"
 }: {
   data: MetaBasicMetricsReport;
   googleData?: GoogleBasicMetricsReport;
   amazonData?: AmazonBasicMetricsReport;
-  initialTimeRange?: "all" | "90d" | "30d";
+  initialTimeRange?: string;
+  initialPlatform?: "META" | "GOOGLE" | "AMAZON";
 }) {
-  const [selectedPlatform, setSelectedPlatform] = useState<"META" | "GOOGLE" | "AMAZON">("META");
-  const [selectedTimeRange, setSelectedTimeRange] = useState<"all" | "90d" | "30d">(initialTimeRange);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const [selectedPlatform, setSelectedPlatform] = useState<"META" | "GOOGLE" | "AMAZON">(initialPlatform);
+  const [selectedTimeRange, setSelectedTimeRange] = useState<string>(initialTimeRange);
   const [selectedState, setSelectedState] = useState<string>("ALL");
   const [copiedState, setCopiedState] = useState<string | null>(null);
   const [googleCampaignMode, setGoogleCampaignMode] = useState<"ACTIVE" | "ALL">("ACTIVE");
@@ -52,6 +58,33 @@ export function MetaBasicMetricsOverview({
   const [amazonSearchQuery, setAmazonSearchQuery] = useState<string>("");
   const [isUploadingAmazon, setIsUploadingAmazon] = useState<boolean>(false);
   const [uploadAmazonStatus, setUploadAmazonStatus] = useState<{ success?: boolean; message?: string } | null>(null);
+
+  useEffect(() => {
+    if (initialTimeRange) {
+      setSelectedTimeRange(initialTimeRange);
+    }
+  }, [initialTimeRange]);
+
+  useEffect(() => {
+    if (initialPlatform) {
+      setSelectedPlatform(initialPlatform);
+    }
+  }, [initialPlatform]);
+
+  const handlePlatformChange = (platform: "META" | "GOOGLE" | "AMAZON") => {
+    setSelectedPlatform(platform);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("platform", platform);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  };
+
+  const handleTimeRangeChange = (rangeKey: string) => {
+    setSelectedTimeRange(rangeKey);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("range", rangeKey);
+    params.set("platform", selectedPlatform);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  };
 
   const handleAmazonFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -81,12 +114,12 @@ export function MetaBasicMetricsOverview({
     }
   };
 
-  const currentPresetData = data[selectedTimeRange] || data["all"];
-  const states = currentPresetData.states;
+  const currentPresetData = (data as any)?.[selectedTimeRange] || data?.["30d"] || data?.all || { spend: 0, impressions: 0, clicks: 0, ctr: 0, cpc: 0, leads: 0, cpl: 0, reach: 0, states: [] };
+  const states: StateBasicMetric[] = currentPresetData?.states || [];
 
   // Selected state data (if specific state chosen)
   const activeStateData = selectedState !== "ALL"
-    ? states.find((s) => s.state === selectedState)
+    ? states.find((s: StateBasicMetric) => s.state === selectedState)
     : null;
 
   const copyToClipboard = (stateName: string, districts: string[]) => {
@@ -136,7 +169,7 @@ export function MetaBasicMetricsOverview({
         {/* Platform Selector Tabs */}
         <div className="flex bg-stone/30 p-1 rounded border border-stone">
           <button
-            onClick={() => setSelectedPlatform("META")}
+            onClick={() => handlePlatformChange("META")}
             className={`px-3 py-1.5 rounded text-[12px] font-semibold flex items-center gap-1.5 transition-all ${
               selectedPlatform === "META"
                 ? "bg-card text-ink shadow-2xs"
@@ -148,7 +181,7 @@ export function MetaBasicMetricsOverview({
           </button>
 
           <button
-            onClick={() => setSelectedPlatform("GOOGLE")}
+            onClick={() => handlePlatformChange("GOOGLE")}
             className={`px-3 py-1.5 rounded text-[12px] font-medium flex items-center gap-1.5 transition-all ${
               selectedPlatform === "GOOGLE"
                 ? "bg-card text-ink shadow-2xs"
@@ -165,7 +198,7 @@ export function MetaBasicMetricsOverview({
           </button>
 
           <button
-            onClick={() => setSelectedPlatform("AMAZON")}
+            onClick={() => handlePlatformChange("AMAZON")}
             className={`px-3 py-1.5 rounded text-[12px] font-medium flex items-center gap-1.5 transition-all ${
               selectedPlatform === "AMAZON"
                 ? "bg-card text-ink shadow-2xs"
@@ -217,7 +250,17 @@ export function MetaBasicMetricsOverview({
               <span className="text-[12px] font-semibold text-ink-soft">Time Range:</span>
               <div className="inline-flex bg-card p-0.5 rounded border border-stone">
                 <button
-                  onClick={() => setSelectedTimeRange("30d")}
+                  onClick={() => handleTimeRangeChange("7d")}
+                  className={`px-3 py-1 rounded text-[11.5px] font-semibold transition-all ${
+                    selectedTimeRange === "7d"
+                      ? "bg-slate text-white"
+                      : "text-ink-soft hover:text-ink"
+                  }`}
+                >
+                  Last 7 Days
+                </button>
+                <button
+                  onClick={() => handleTimeRangeChange("30d")}
                   className={`px-3 py-1 rounded text-[11.5px] font-semibold transition-all ${
                     selectedTimeRange === "30d"
                       ? "bg-slate text-white"
@@ -227,7 +270,7 @@ export function MetaBasicMetricsOverview({
                   Last 30 Days
                 </button>
                 <button
-                  onClick={() => setSelectedTimeRange("90d")}
+                  onClick={() => handleTimeRangeChange("90d")}
                   className={`px-3 py-1 rounded text-[11.5px] font-semibold transition-all ${
                     selectedTimeRange === "90d"
                       ? "bg-slate text-white"
@@ -237,7 +280,7 @@ export function MetaBasicMetricsOverview({
                   Last 90 Days
                 </button>
                 <button
-                  onClick={() => setSelectedTimeRange("all")}
+                  onClick={() => handleTimeRangeChange("all")}
                   className={`px-3 py-1 rounded text-[11.5px] font-semibold transition-all ${
                     selectedTimeRange === "all"
                       ? "bg-slate text-white"
@@ -246,6 +289,11 @@ export function MetaBasicMetricsOverview({
                 >
                   All Synced
                 </button>
+                {selectedTimeRange === "custom" && (
+                  <span className="px-3 py-1 rounded text-[11.5px] font-semibold bg-slate text-white">
+                    Custom Range
+                  </span>
+                )}
               </div>
             </div>
 
@@ -257,7 +305,7 @@ export function MetaBasicMetricsOverview({
                 <span className="text-ink-soft font-mono text-[11px]">({googleData.customerId})</span>
               </div>
               <Link
-                href="/reports?brand=ALL&range=30d&format=xlsx"
+                href={`/reports?brand=ALL&range=${selectedTimeRange}&format=xlsx`}
                 className="text-[11.5px] font-semibold text-ink bg-stone/40 hover:bg-stone/70 border border-stone px-2.5 py-1.5 rounded flex items-center gap-1 transition-colors"
               >
                 <span>Download Report</span>
@@ -268,7 +316,7 @@ export function MetaBasicMetricsOverview({
 
           {/* 6 Basic Google Metrics KPI Grid */}
           {(() => {
-            const googlePreset = googleData[selectedTimeRange] || googleData["30d"];
+            const googlePreset = (googleData as any)?.[selectedTimeRange] || googleData?.["90d"] || googleData?.["30d"] || (googleData as any)?.all;
             return (
               <>
                 <div className="grid grid-cols-2 md:grid-cols-6 gap-[1px] bg-stone border border-stone rounded-md overflow-hidden">
@@ -461,12 +509,12 @@ export function MetaBasicMetricsOverview({
                     : (googlePreset.allCampaigns || googlePreset.campaigns);
 
                   const filteredCampaigns = googleSearchQuery.trim()
-                    ? baseCampaigns.filter((c) =>
+                    ? (baseCampaigns || []).filter((c: any) =>
                         c.name.toLowerCase().includes(googleSearchQuery.toLowerCase()) ||
                         c.brand.toLowerCase().includes(googleSearchQuery.toLowerCase()) ||
                         c.objective.toLowerCase().includes(googleSearchQuery.toLowerCase())
                       )
-                    : baseCampaigns;
+                    : (baseCampaigns || []);
 
                   return (
                     <div className="border border-stone rounded-md overflow-hidden bg-card">
@@ -550,7 +598,7 @@ export function MetaBasicMetricsOverview({
                                 </td>
                               </tr>
                             ) : (
-                              filteredCampaigns.map((c) => (
+                              filteredCampaigns.map((c: any) => (
                                 <tr key={c.id} className="hover:bg-[#FAF9F6]/70 transition-colors">
                                   <td className="py-3 px-4 font-semibold text-ink">
                                     {c.name}
@@ -629,13 +677,13 @@ export function MetaBasicMetricsOverview({
       ) : selectedPlatform === "AMAZON" ? (
         <div className="pt-5 space-y-6">
           {/* If Amazon has connected metrics and campaigns */}
-          {amazonData && amazonData.status === "CONNECTED" && ((amazonData[selectedTimeRange] || amazonData["30d"]).campaigns.length > 0 || (amazonData[selectedTimeRange] || amazonData["30d"]).spend > 0) ? (
+          {amazonData && amazonData.status === "CONNECTED" && ((((amazonData as any)?.[selectedTimeRange] || amazonData["30d"])?.campaigns?.length > 0) || (((amazonData as any)?.[selectedTimeRange] || amazonData["30d"])?.spend > 0)) ? (
             (() => {
-              const amazonPreset = amazonData[selectedTimeRange] || amazonData["30d"];
+              const amazonPreset = (amazonData as any)?.[selectedTimeRange] || amazonData["30d"] || amazonData["90d"] || (amazonData as any)?.all;
               const filteredCampaigns = (amazonCampaignMode === "ACTIVE"
-                ? amazonPreset.campaigns
-                : amazonPreset.allCampaigns
-              ).filter((c) => {
+                ? amazonPreset?.campaigns || []
+                : amazonPreset?.allCampaigns || []
+              ).filter((c: any) => {
                 if (!amazonSearchQuery) return true;
                 const q = amazonSearchQuery.toLowerCase();
                 return (
@@ -654,7 +702,17 @@ export function MetaBasicMetricsOverview({
                       <span className="text-[12px] font-semibold text-ink-soft">Time Range:</span>
                       <div className="inline-flex bg-card p-0.5 rounded border border-stone">
                         <button
-                          onClick={() => setSelectedTimeRange("30d")}
+                          onClick={() => handleTimeRangeChange("7d")}
+                          className={`px-3 py-1 rounded text-[11.5px] font-semibold transition-all ${
+                            selectedTimeRange === "7d"
+                              ? "bg-slate text-white"
+                              : "text-ink-soft hover:text-ink"
+                          }`}
+                        >
+                          Last 7 Days
+                        </button>
+                        <button
+                          onClick={() => handleTimeRangeChange("30d")}
                           className={`px-3 py-1 rounded text-[11.5px] font-semibold transition-all ${
                             selectedTimeRange === "30d"
                               ? "bg-slate text-white"
@@ -664,7 +722,7 @@ export function MetaBasicMetricsOverview({
                           Last 30 Days
                         </button>
                         <button
-                          onClick={() => setSelectedTimeRange("90d")}
+                          onClick={() => handleTimeRangeChange("90d")}
                           className={`px-3 py-1 rounded text-[11.5px] font-semibold transition-all ${
                             selectedTimeRange === "90d"
                               ? "bg-slate text-white"
@@ -674,7 +732,7 @@ export function MetaBasicMetricsOverview({
                           Last 90 Days
                         </button>
                         <button
-                          onClick={() => setSelectedTimeRange("all")}
+                          onClick={() => handleTimeRangeChange("all")}
                           className={`px-3 py-1 rounded text-[11.5px] font-semibold transition-all ${
                             selectedTimeRange === "all"
                               ? "bg-slate text-white"
@@ -683,6 +741,11 @@ export function MetaBasicMetricsOverview({
                         >
                           All Synced
                         </button>
+                        {selectedTimeRange === "custom" && (
+                          <span className="px-3 py-1 rounded text-[11.5px] font-semibold bg-slate text-white">
+                            Custom Range
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -909,7 +972,7 @@ export function MetaBasicMetricsOverview({
                               </td>
                             </tr>
                           ) : (
-                            filteredCampaigns.map((c) => (
+                            filteredCampaigns.map((c: any) => (
                               <tr key={c.id} className="hover:bg-[#FAF9F6]/70 transition-colors">
                                 <td className="py-3 px-4 font-semibold text-ink">
                                   {c.name}
@@ -1195,17 +1258,27 @@ export function MetaBasicMetricsOverview({
               <span className="text-[12px] font-semibold text-ink-soft">Time Range:</span>
               <div className="inline-flex bg-card p-0.5 rounded border border-stone">
                 <button
-                  onClick={() => setSelectedTimeRange("all")}
+                  onClick={() => handleTimeRangeChange("7d")}
                   className={`px-3 py-1 rounded text-[11.5px] font-semibold transition-all ${
-                    selectedTimeRange === "all"
+                    selectedTimeRange === "7d"
                       ? "bg-slate text-white"
                       : "text-ink-soft hover:text-ink"
                   }`}
                 >
-                  All Time
+                  Last 7 Days
                 </button>
                 <button
-                  onClick={() => setSelectedTimeRange("90d")}
+                  onClick={() => handleTimeRangeChange("30d")}
+                  className={`px-3 py-1 rounded text-[11.5px] font-semibold transition-all ${
+                    selectedTimeRange === "30d"
+                      ? "bg-slate text-white"
+                      : "text-ink-soft hover:text-ink"
+                  }`}
+                >
+                  Last 30 Days
+                </button>
+                <button
+                  onClick={() => handleTimeRangeChange("90d")}
                   className={`px-3 py-1 rounded text-[11.5px] font-semibold transition-all ${
                     selectedTimeRange === "90d"
                       ? "bg-slate text-white"
@@ -1215,15 +1288,20 @@ export function MetaBasicMetricsOverview({
                   Last 90 Days
                 </button>
                 <button
-                  onClick={() => setSelectedTimeRange("30d")}
+                  onClick={() => handleTimeRangeChange("all")}
                   className={`px-3 py-1 rounded text-[11.5px] font-semibold transition-all ${
-                    selectedTimeRange === "30d"
+                    selectedTimeRange === "all"
                       ? "bg-slate text-white"
                       : "text-ink-soft hover:text-ink"
                   }`}
                 >
-                  Last 30 Days
+                  All Time
                 </button>
+                {selectedTimeRange === "custom" && (
+                  <span className="px-3 py-1 rounded text-[11.5px] font-semibold bg-slate text-white">
+                    Custom Range
+                  </span>
+                )}
               </div>
             </div>
 

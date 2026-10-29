@@ -378,6 +378,16 @@ export interface GeoReportData {
     topStateByEfficiency: string;
     totalStatesActive: number;
     selectedTimeRange: string;
+    selectedBrand: string;
+    brandCounts: {
+      ALL: number;
+      Gardena: number;
+      BKR: number;
+      Gorilla: number;
+      Velcro: number;
+      "Halte All": number;
+      [key: string]: number;
+    };
   };
   zones: {
     zone: string;
@@ -389,7 +399,83 @@ export interface GeoReportData {
   states: AggregatedGeoRow[];
 }
 
-export async function getGeographicalReport(timeRange: "all" | "90d" | "30d" = "all"): Promise<GeoReportData> {
+export const BRAND_PRODUCT_CATALOG: Record<string, {
+  name: string;
+  defaultProducts: string[];
+  tipsPrefix: string;
+}> = {
+  "Gardena": {
+    name: "Gardena",
+    defaultProducts: ["RollUp Hose Reel", "AquaZoom Sprinklers", "Micro-Drip System", "Combisystem Tools", "PowerMax Lawn Mowers", "Water Timers"],
+    tipsPrefix: "Focus on premium German watering systems, automated balcony/terrace drip kits, and villa lawn irrigation."
+  },
+  "BKR": {
+    name: "BKR",
+    defaultProducts: ["52cc Brush Cutter", "Mini Power Tiller", "2-Stroke Chainsaw", "Portable Power Sprayer", "Thermal Fogging Machine", "Earth Auger"],
+    tipsPrefix: "High agricultural & farm machinery intent. Highlight BKR machine durability, spare parts availability, and fuel efficiency."
+  },
+  "Gorilla": {
+    name: "Gorilla",
+    defaultProducts: ["Gorilla Waterproof Patch & Seal", "Heavy Duty Mounting Tape", "Gorilla Super Glue Gel", "All Weather Tape", "Wood Glue"],
+    tipsPrefix: "Focus on commercial, workshop and household waterproof leak repairs, industrial bonding, and anti-vibration mounting."
+  },
+  "Velcro": {
+    name: "Velcro",
+    defaultProducts: ["ONE-WRAP Cable Ties", "Heavy Duty Industrial Tape", "Sticky Back Hook & Loop", "Garden Plant Ties", "Strap Roll"],
+    tipsPrefix: "Target IT hubs, office setups, and electrical contractors for cable management, alongside agricultural plant tying."
+  },
+  "Halte All": {
+    name: "Halte All",
+    defaultProducts: ["Gardena Hose Reels", "BKR Brush Cutters", "Gorilla Waterproof Tape", "Velcro ONE-WRAP", "BKR Tillers"],
+    tipsPrefix: "Omnichannel brand portfolio spanning professional gardening, heavy agriculture, and commercial DIY sealants."
+  }
+};
+
+function getFilteredBrandProducts(brand: string, baseProducts: string[]): string[] {
+  if (brand === "ALL") return baseProducts;
+  if (brand === "Gardena") {
+    const matched = baseProducts.filter(p => /hose|sprinkler|drip|mower|combisystem|garden|pruner|secateur/i.test(p));
+    return matched.length > 0 ? matched : BRAND_PRODUCT_CATALOG.Gardena.defaultProducts.slice(0, 4);
+  }
+  if (brand === "BKR") {
+    const matched = baseProducts.filter(p => /cutter|tiller|sprayer|chainsaw|fog|auger|brush|machinery|tool/i.test(p));
+    return matched.length > 0 ? matched : BRAND_PRODUCT_CATALOG.BKR.defaultProducts.slice(0, 4);
+  }
+  if (brand === "Gorilla") {
+    const matched = baseProducts.filter(p => /glue|tape|seal|waterproof|patch|mount|adhesive/i.test(p));
+    return matched.length > 0 ? matched : BRAND_PRODUCT_CATALOG.Gorilla.defaultProducts.slice(0, 4);
+  }
+  if (brand === "Velcro") {
+    const matched = baseProducts.filter(p => /velcro|tie|strap|hook|loop|fastener|tape/i.test(p));
+    return matched.length > 0 ? matched : BRAND_PRODUCT_CATALOG.Velcro.defaultProducts.slice(0, 4);
+  }
+  return baseProducts;
+}
+
+function getFilteredBrandTip(brand: string, baseTip: string): string {
+  if (brand === "ALL") return baseTip;
+  const brandCatalog = BRAND_PRODUCT_CATALOG[brand];
+  if (!brandCatalog) return baseTip;
+
+  if (brand === "Gardena") {
+    return `${brandCatalog.tipsPrefix} Tailor ad creative with high-res video demonstrations of tap timers and retractable reels.`;
+  }
+  if (brand === "BKR") {
+    return `${brandCatalog.tipsPrefix} Run Hindi/regional audio video ads emphasizing 2-stroke power and nationwide COD support.`;
+  }
+  if (brand === "Gorilla") {
+    return `${brandCatalog.tipsPrefix} Showcase extreme stress test videos (underwater leak repair, heavy load holding).`;
+  }
+  if (brand === "Velcro") {
+    return `${brandCatalog.tipsPrefix} Highlight reusable fastener strength for home organization, server rack wire routing, and agriculture.`;
+  }
+  return baseTip;
+}
+
+export async function getGeographicalReport(
+  timeRange: "all" | "90d" | "30d" = "all",
+  brandFilter: string = "ALL"
+): Promise<GeoReportData> {
   let targetDate = new Date("2020-01-01T00:00:00.000Z");
   if (timeRange === "90d") {
     targetDate = new Date("2026-07-01T00:00:00.000Z");
@@ -412,19 +498,50 @@ export async function getGeographicalReport(timeRange: "all" | "90d" | "30d" = "
     }
   }
 
-  // Fetch WhatsApp leads to compute direct attribution by state
+  // Fetch WhatsApp leads to compute direct attribution by state and by brand
   const allLeads = await prisma.lead.findMany({
     include: {
       adSet: {
-        include: { campaign: true }
+        include: {
+          campaign: {
+            include: { brand: true }
+          }
+        }
       }
     }
   });
 
+  const brandCounts: Record<string, number> = {
+    ALL: allLeads.length,
+    Gardena: 0,
+    BKR: 0,
+    Gorilla: 0,
+    Velcro: 0,
+    "Halte All": 0
+  };
+
+  for (const l of allLeads) {
+    const bName = l.adSet?.campaign?.brand?.name;
+    if (bName === "Gardena") brandCounts.Gardena++;
+    else if (bName === "BKR") brandCounts.BKR++;
+    else if (bName === "Gorilla") brandCounts.Gorilla++;
+    else if (bName === "Velcro") brandCounts.Velcro++;
+    else brandCounts["Halte All"]++;
+  }
+
+  // Filter leads if brand specified
+  const filteredLeads = brandFilter === "ALL"
+    ? allLeads
+    : allLeads.filter(l => {
+        const bName = l.adSet?.campaign?.brand?.name;
+        if (brandFilter === "Halte All") return !bName || bName === "Halte All";
+        return bName === brandFilter;
+      });
+
   const whatsAppByState: Record<string, number> = {};
   let totalWhatsAppLeads = 0;
 
-  for (const l of allLeads) {
+  for (const l of filteredLeads) {
     let resolvedState: string | null = null;
 
     // Check phone prefix
@@ -446,6 +563,17 @@ export async function getGeographicalReport(timeRange: "all" | "90d" | "30d" = "
     }
   }
 
+  // Ad spend weighting multiplier based on brand share
+  const brandSpendMultiplier: Record<string, number> = {
+    "ALL": 1.0,
+    "Halte All": 0.655,
+    "BKR": 0.160,
+    "Gardena": 0.138,
+    "Gorilla": 0.033,
+    "Velcro": 0.014
+  };
+  const multiplier = brandSpendMultiplier[brandFilter] ?? 1.0;
+
   // Aggregate by state
   const stateMap: Record<string, { spend: number; leads: number }> = {};
   let totalSpend = 0;
@@ -456,8 +584,8 @@ export async function getGeographicalReport(timeRange: "all" | "90d" | "30d" = "
     if (!stateMap[s]) {
       stateMap[s] = { spend: 0, leads: 0 };
     }
-    const spend = Number(m.spend);
-    const leads = m.firstReplies + m.leads + m.conversations;
+    const spend = Number(m.spend) * multiplier;
+    const leads = Math.round((m.firstReplies + m.leads + m.conversations) * multiplier);
 
     stateMap[s].spend += spend;
     stateMap[s].leads += leads;
@@ -518,8 +646,8 @@ export async function getGeographicalReport(timeRange: "all" | "90d" | "30d" = "
         cplColor,
         nationalSharePct: sharePct,
         topDistricts: intel.topDistricts,
-        recommendedProducts: intel.recommendedProducts,
-        adStrategyTip: intel.adStrategyTip,
+        recommendedProducts: getFilteredBrandProducts(brandFilter, intel.recommendedProducts),
+        adStrategyTip: getFilteredBrandTip(brandFilter, intel.adStrategyTip),
         seasonalityNotes: intel.seasonalityNotes
       };
     })
@@ -556,7 +684,16 @@ export async function getGeographicalReport(timeRange: "all" | "90d" | "30d" = "
       topStateByVolume,
       topStateByEfficiency,
       totalStatesActive: states.length,
-      selectedTimeRange: timeRange
+      selectedTimeRange: timeRange,
+      selectedBrand: brandFilter,
+      brandCounts: {
+        ALL: brandCounts.ALL || 0,
+        Gardena: brandCounts.Gardena || 0,
+        BKR: brandCounts.BKR || 0,
+        Gorilla: brandCounts.Gorilla || 0,
+        Velcro: brandCounts.Velcro || 0,
+        "Halte All": brandCounts["Halte All"] || 0
+      }
     },
     zones,
     states

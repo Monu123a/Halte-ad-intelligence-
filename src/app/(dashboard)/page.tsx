@@ -4,6 +4,7 @@ import { getMetaOverviewMetrics } from "@/lib/metaBasicMetrics";
 import { getGoogleOverviewMetrics } from "@/lib/googleMetrics";
 import { getAmazonOverviewMetrics } from "@/lib/amazonMetrics";
 import { MetaBasicMetricsOverview } from "@/components/MetaBasicMetricsOverview";
+import { DateRangeSelector } from "@/components/DateRangeSelector";
 import prisma from "@/lib/prisma";
 import Link from "next/link";
 import { getSession } from "@/lib/auth";
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
 export default function OverviewPage({
   searchParams
 }: {
-  searchParams: { page?: string; filter?: string; range?: string; platform?: string }
+  searchParams: { page?: string; filter?: string; range?: string; platform?: string; from?: string; to?: string }
 }) {
   return (
     <OverviewContent searchParams={searchParams} />
@@ -24,25 +25,37 @@ export default function OverviewPage({
 async function OverviewContent({
   searchParams
 }: {
-  searchParams: { page?: string; filter?: string; range?: string; platform?: string }
+  searchParams: { page?: string; filter?: string; range?: string; platform?: string; from?: string; to?: string }
 }) {
   const session = await getSession();
   if (session?.role === "LEAD_TAGGER") {
     redirect("/leads");
   }
 
-  const range = (searchParams.range === "90d" || searchParams.range === "all") ? searchParams.range : "30d";
+  const range = (searchParams.range === "7d" || searchParams.range === "90d" || searchParams.range === "all" || searchParams.range === "custom")
+    ? searchParams.range
+    : "30d";
+  const from = searchParams.from;
+  const to = searchParams.to;
   const selectedPlatformFilter = searchParams.platform || "ALL";
   const filter = searchParams.filter;
 
+  const customRange = (range === "custom" && from)
+    ? { from: new Date(from), to: to ? new Date(to) : undefined }
+    : undefined;
+
   const [recommendationsRaw, stats, { overview: webOverview }, brands, metaBasicMetrics, googleBasicMetrics, amazonBasicMetrics] = await Promise.all([
-    getDashboardRecommendations(range),
-    getOverviewStats(),
-    getWebsiteAnalyticsData({ days: range === "90d" ? 90 : range === "all" ? 180 : 30 }),
+    getDashboardRecommendations(range, customRange),
+    getOverviewStats(range, customRange),
+    getWebsiteAnalyticsData(
+      customRange
+        ? { from: customRange.from, to: customRange.to }
+        : { days: range === "7d" ? 7 : range === "90d" ? 90 : range === "all" ? 180 : 30 }
+    ),
     prisma.brand.findMany(),
-    getMetaOverviewMetrics(),
-    getGoogleOverviewMetrics(),
-    getAmazonOverviewMetrics()
+    getMetaOverviewMetrics(customRange),
+    getGoogleOverviewMetrics(customRange),
+    getAmazonOverviewMetrics(customRange)
   ]);
 
   // Platform Counts for tabs
@@ -61,6 +74,10 @@ async function OverviewContent({
   if (filter && filter !== "ALL") {
     recommendations = recommendations.filter((r: any) => r.action === filter);
   }
+
+  const rangeQuery = range === "custom" && from
+    ? `range=custom&from=${encodeURIComponent(from)}${to ? `&to=${encodeURIComponent(to)}` : ""}`
+    : `range=${range}`;
 
   const currentMonthName = new Date().toLocaleString("en-US", { month: "long", year: "numeric" });
   
@@ -134,45 +151,29 @@ async function OverviewContent({
         <div>
           <h1 className="font-serif text-[30px] m-0 mb-1 font-semibold">Overview</h1>
           <p className="m-0 text-[13.5px] text-ink-soft">
-            Omnichannel Marketing Intelligence &middot; {range === "all" ? "All Time" : range === "90d" ? "Past 90 Days" : "Past 30 Days"}
+            Omnichannel Marketing Intelligence &middot; {
+              range === "all"
+                ? "All Time"
+                : range === "90d"
+                ? "Past 90 Days"
+                : range === "7d"
+                ? "Past 7 Days"
+                : range === "custom" && from
+                ? `Custom Range (${from}${to ? ` to ${to}` : ""})`
+                : "Past 30 Days"
+            }
           </p>
         </div>
 
         {/* Global Date Range Selector */}
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1 bg-card p-1 rounded border border-stone shadow-2xs">
-            <span className="text-[11.5px] font-semibold text-ink-soft px-2">Period:</span>
-            <Link
-              href={`?range=30d${selectedPlatformFilter !== 'ALL' ? `&platform=${selectedPlatformFilter}` : ''}${filter ? `&filter=${filter}` : ''}`}
-              className={`px-3 py-1 rounded text-[11.5px] font-semibold transition-all ${
-                range === "30d"
-                  ? "bg-slate text-white shadow-2xs"
-                  : "text-ink-soft hover:text-ink hover:bg-stone/30"
-              }`}
-            >
-              Past 30 Days
-            </Link>
-            <Link
-              href={`?range=90d${selectedPlatformFilter !== 'ALL' ? `&platform=${selectedPlatformFilter}` : ''}${filter ? `&filter=${filter}` : ''}`}
-              className={`px-3 py-1 rounded text-[11.5px] font-semibold transition-all ${
-                range === "90d"
-                  ? "bg-slate text-white shadow-2xs"
-                  : "text-ink-soft hover:text-ink hover:bg-stone/30"
-              }`}
-            >
-              Past 90 Days
-            </Link>
-            <Link
-              href={`?range=all${selectedPlatformFilter !== 'ALL' ? `&platform=${selectedPlatformFilter}` : ''}${filter ? `&filter=${filter}` : ''}`}
-              className={`px-3 py-1 rounded text-[11.5px] font-semibold transition-all ${
-                range === "all"
-                  ? "bg-slate text-white shadow-2xs"
-                  : "text-ink-soft hover:text-ink hover:bg-stone/30"
-              }`}
-            >
-              All Time
-            </Link>
-          </div>
+          <DateRangeSelector
+            currentRange={range}
+            from={from}
+            to={to}
+            currentPlatform={selectedPlatformFilter}
+            currentFilter={filter}
+          />
 
           <div className="text-[12px] border border-stone px-3 py-1.5 text-ink-soft bg-card rounded hidden sm:block">
             {stats.latestSync ? `Synced: ${new Date(stats.latestSync.finishedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Live'}
@@ -186,6 +187,7 @@ async function OverviewContent({
         googleData={googleBasicMetrics} 
         amazonData={amazonBasicMetrics} 
         initialTimeRange={range}
+        initialPlatform={selectedPlatformFilter === "GOOGLE" ? "GOOGLE" : selectedPlatformFilter === "AMAZON" ? "AMAZON" : "META"}
       />
 
       <div className="grid grid-cols-5 gap-[1px] bg-stone border border-stone mb-7 rounded-md overflow-hidden">
@@ -276,7 +278,7 @@ async function OverviewContent({
             <h3 className="m-0 mb-1 text-[16px] font-bold font-sans flex items-center gap-2">
               <span>Algorithmic Recommendations</span>
               <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-stone/30 text-stone-dark">
-                {range === "all" ? "All Time" : range === "90d" ? "Past 90 Days" : "Past 30 Days"}
+                {range === "all" ? "All Time" : range === "90d" ? "Past 90 Days" : range === "7d" ? "Past 7 Days" : range === "custom" && from ? `Custom (${from}${to ? ` to ${to}` : ""})` : "Past 30 Days"}
               </span>
             </h3>
             <div className="text-[12.5px] text-ink-soft">
@@ -286,11 +288,11 @@ async function OverviewContent({
 
           {/* Action Filter Pills */}
           <div className="flex gap-1.5 items-center flex-wrap">
-            <Link href={`?range=${range}&platform=${selectedPlatformFilter}&filter=ALL`} className={`px-2.5 py-1 rounded-sm text-[11px] font-semibold border border-transparent ${!filter || filter === 'ALL' ? 'bg-ink text-white' : 'bg-stone text-ink-soft hover:bg-stone-dark hover:text-white'}`}>All Actions</Link>
-            <Link href={`?range=${range}&platform=${selectedPlatformFilter}&filter=INCREASE`} className={`px-2.5 py-1 rounded-sm text-[11px] font-semibold border ${filter === 'INCREASE' ? 'bg-green-tint text-green border-green/20' : 'bg-white border-stone text-ink-soft hover:bg-stone'}`}>Increase</Link>
-            <Link href={`?range=${range}&platform=${selectedPlatformFilter}&filter=DECREASE`} className={`px-2.5 py-1 rounded-sm text-[11px] font-semibold border ${filter === 'DECREASE' ? 'bg-rust-tint text-rust border-rust/20' : 'bg-white border-stone text-ink-soft hover:bg-stone'}`}>Reduce</Link>
-            <Link href={`?range=${range}&platform=${selectedPlatformFilter}&filter=HOLD`} className={`px-2.5 py-1 rounded-sm text-[11px] font-semibold border ${filter === 'HOLD' ? 'bg-slate-tint text-slate border-slate/20' : 'bg-white border-stone text-ink-soft hover:bg-stone'}`}>Hold</Link>
-            <Link href={`?range=${range}&platform=${selectedPlatformFilter}&filter=NOT_ENOUGH_DATA`} className={`px-2.5 py-1 rounded-sm text-[11px] font-semibold border ${filter === 'NOT_ENOUGH_DATA' ? 'bg-stone text-ink-soft border-stone-dark/20' : 'bg-white border-stone text-ink-soft hover:bg-stone'}`}>Not enough data</Link>
+            <Link href={`?${rangeQuery}&platform=${selectedPlatformFilter}&filter=ALL`} className={`px-2.5 py-1 rounded-sm text-[11px] font-semibold border border-transparent ${!filter || filter === 'ALL' ? 'bg-ink text-white' : 'bg-stone text-ink-soft hover:bg-stone-dark hover:text-white'}`}>All Actions</Link>
+            <Link href={`?${rangeQuery}&platform=${selectedPlatformFilter}&filter=INCREASE`} className={`px-2.5 py-1 rounded-sm text-[11px] font-semibold border ${filter === 'INCREASE' ? 'bg-green-tint text-green border-green/20' : 'bg-white border-stone text-ink-soft hover:bg-stone'}`}>Increase</Link>
+            <Link href={`?${rangeQuery}&platform=${selectedPlatformFilter}&filter=DECREASE`} className={`px-2.5 py-1 rounded-sm text-[11px] font-semibold border ${filter === 'DECREASE' ? 'bg-rust-tint text-rust border-rust/20' : 'bg-white border-stone text-ink-soft hover:bg-stone'}`}>Reduce</Link>
+            <Link href={`?${rangeQuery}&platform=${selectedPlatformFilter}&filter=HOLD`} className={`px-2.5 py-1 rounded-sm text-[11px] font-semibold border ${filter === 'HOLD' ? 'bg-slate-tint text-slate border-slate/20' : 'bg-white border-stone text-ink-soft hover:bg-stone'}`}>Hold</Link>
+            <Link href={`?${rangeQuery}&platform=${selectedPlatformFilter}&filter=NOT_ENOUGH_DATA`} className={`px-2.5 py-1 rounded-sm text-[11px] font-semibold border ${filter === 'NOT_ENOUGH_DATA' ? 'bg-stone text-ink-soft border-stone-dark/20' : 'bg-white border-stone text-ink-soft hover:bg-stone'}`}>Not enough data</Link>
           </div>
         </div>
 
@@ -298,7 +300,7 @@ async function OverviewContent({
         <div className="flex items-center gap-2 mb-5 overflow-x-auto pb-1 text-[12px]">
           <span className="font-semibold text-ink-soft text-[11.5px] mr-1">Platform:</span>
           <Link
-            href={`?range=${range}&platform=ALL${filter ? `&filter=${filter}` : ''}`}
+            href={`?${rangeQuery}&platform=ALL${filter ? `&filter=${filter}` : ''}`}
             className={`px-3 py-1 rounded font-semibold transition-colors ${
               selectedPlatformFilter === "ALL"
                 ? "bg-ink text-white shadow-2xs"
@@ -308,7 +310,7 @@ async function OverviewContent({
             All Platforms ({platformCounts.ALL})
           </Link>
           <Link
-            href={`?range=${range}&platform=META${filter ? `&filter=${filter}` : ''}`}
+            href={`?${rangeQuery}&platform=META${filter ? `&filter=${filter}` : ''}`}
             className={`px-3 py-1 rounded font-semibold flex items-center gap-1.5 transition-colors ${
               selectedPlatformFilter === "META"
                 ? "bg-[#1877F2] text-white shadow-2xs"
@@ -319,7 +321,7 @@ async function OverviewContent({
             Meta Ads ({platformCounts.META})
           </Link>
           <Link
-            href={`?range=${range}&platform=GOOGLE${filter ? `&filter=${filter}` : ''}`}
+            href={`?${rangeQuery}&platform=GOOGLE${filter ? `&filter=${filter}` : ''}`}
             className={`px-3 py-1 rounded font-semibold flex items-center gap-1.5 transition-colors ${
               selectedPlatformFilter === "GOOGLE"
                 ? "bg-[#EA4335] text-white shadow-2xs"
@@ -330,7 +332,7 @@ async function OverviewContent({
             Google Ads ({platformCounts.GOOGLE})
           </Link>
           <Link
-            href={`?range=${range}&platform=AMAZON${filter ? `&filter=${filter}` : ''}`}
+            href={`?${rangeQuery}&platform=AMAZON${filter ? `&filter=${filter}` : ''}`}
             className={`px-3 py-1 rounded font-semibold flex items-center gap-1.5 transition-colors ${
               selectedPlatformFilter === "AMAZON"
                 ? "bg-[#FF9900] text-white shadow-2xs"
@@ -407,13 +409,13 @@ async function OverviewContent({
               </div>
               <div className="flex gap-2">
                 {page > 1 ? (
-                  <Link href={`/?page=${page - 1}&range=${range}&platform=${selectedPlatformFilter}${filter ? `&filter=${filter}` : ''}`} className="px-3 py-1.5 border border-stone rounded-sm text-[12.5px] hover:bg-stone">Previous</Link>
+                  <Link href={`/?page=${page - 1}&${rangeQuery}&platform=${selectedPlatformFilter}${filter ? `&filter=${filter}` : ''}`} className="px-3 py-1.5 border border-stone rounded-sm text-[12.5px] hover:bg-stone">Previous</Link>
                 ) : (
                   <span className="px-3 py-1.5 border border-stone rounded-sm text-[12.5px] text-stone-dark cursor-not-allowed">Previous</span>
                 )}
                 
                 {page < totalPages ? (
-                  <Link href={`/?page=${page + 1}&range=${range}&platform=${selectedPlatformFilter}${filter ? `&filter=${filter}` : ''}`} className="px-3 py-1.5 border border-stone rounded-sm text-[12.5px] hover:bg-stone">Next</Link>
+                  <Link href={`/?page=${page + 1}&${rangeQuery}&platform=${selectedPlatformFilter}${filter ? `&filter=${filter}` : ''}`} className="px-3 py-1.5 border border-stone rounded-sm text-[12.5px] hover:bg-stone">Next</Link>
                 ) : (
                   <span className="px-3 py-1.5 border border-stone rounded-sm text-[12.5px] text-stone-dark cursor-not-allowed">Next</span>
                 )}

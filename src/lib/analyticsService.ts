@@ -91,6 +91,8 @@ export function invalidateAnalyticsCache() {
 
 export async function getWebsiteAnalyticsData(options: {
   days?: number;
+  from?: Date;
+  to?: Date;
   brand?: string;
   page?: number;
   pageSize?: number;
@@ -104,7 +106,9 @@ export async function getWebsiteAnalyticsData(options: {
   const page = Math.max(1, options.page || 1);
   const pageSize = options.pageSize || 12;
 
-  const cacheKey = `${days}_${brandFilter || "ALL"}_${page}_${pageSize}`;
+  const cacheKey = options.from
+    ? `custom_${options.from.toISOString()}_${options.to?.toISOString() || ""}_${brandFilter || "ALL"}_${page}_${pageSize}`
+    : `${days}_${brandFilter || "ALL"}_${page}_${pageSize}`;
   const now = Date.now();
   const cached = analyticsDataCache.get(cacheKey);
   if (cached && now < cached.expiresAt) {
@@ -112,7 +116,12 @@ export async function getWebsiteAnalyticsData(options: {
   }
 
   const whereClause: any = {};
-  if (days > 0 && days < 3650) {
+  if (options.from) {
+    whereClause.createdAt = {
+      gte: options.from,
+      ...(options.to ? { lte: new Date(new Date(options.to).setHours(23, 59, 59, 999)) } : {})
+    };
+  } else if (days > 0 && days < 3650) {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - days);
     whereClause.createdAt = { gte: cutoff };

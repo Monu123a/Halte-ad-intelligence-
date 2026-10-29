@@ -13,7 +13,7 @@ export const metadata = {
 export default async function GeoIntelligencePage({
   searchParams,
 }: {
-  searchParams?: { timeRange?: string };
+  searchParams?: { timeRange?: string; brand?: string };
 }) {
   const session = await getSession();
   if (session?.role === "LEAD_TAGGER") {
@@ -27,7 +27,9 @@ export default async function GeoIntelligencePage({
       ? "30d"
       : "all";
 
-  const report = await getGeographicalReport(validRange);
+  const brand = searchParams?.brand || "ALL";
+
+  const report = await getGeographicalReport(validRange, brand);
 
   return <GeoClient initialData={report} />;
 }
