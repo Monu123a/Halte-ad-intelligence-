@@ -80,7 +80,18 @@ export async function runMetaSync(connectionId: string) {
       where: { subCategory: { not: null }, brand: { not: null } }
     });
 
-    for (const camp of campaigns) {
+    // Helper for bounded parallel execution to avoid sequential database roundtrip bottlenecks
+    const pMap = async <T, R>(items: T[], fn: (item: T) => Promise<R>, concurrency = 12): Promise<R[]> => {
+      const results: R[] = [];
+      for (let i = 0; i < items.length; i += concurrency) {
+        const chunk = items.slice(i, i + concurrency);
+        const chunkRes = await Promise.all(chunk.map(fn));
+        results.push(...chunkRes);
+      }
+      return results;
+    };
+
+    await pMap(campaigns, async (camp) => {
       let brandPageId: string | null = null;
       let products: string[] = [];
       
@@ -141,7 +152,6 @@ export async function runMetaSync(connectionId: string) {
         }
       }
 
-
       let detectedFormat = "Unknown";
       if (fullText.includes("reel")) detectedFormat = "Reel";
       else if (fullText.includes("carousel")) detectedFormat = "Carousel";
@@ -172,7 +182,7 @@ export async function runMetaSync(connectionId: string) {
           products: products
         }
       });
-    }
+    }, 12);
 
     const dbCampaigns = await prisma.campaign.findMany({
       where: { adConnectionId: metaConn.id },
@@ -180,9 +190,9 @@ export async function runMetaSync(connectionId: string) {
     });
     const campaignMap = new Map(dbCampaigns.map(c => [c.platformCampaignId, c.id]));
 
-    for (const adset of adSets) {
+    await pMap(adSets, async (adset) => {
       const campDbId = campaignMap.get(adset.campaignId);
-      if (!campDbId) continue;
+      if (!campDbId) return;
 
       await prisma.adSet.upsert({
         where: { platformAdSetId: adset.id },
@@ -196,7 +206,7 @@ export async function runMetaSync(connectionId: string) {
           campaignId: campDbId
         }
       });
-    }
+    }, 12);
 
     const dbAdSets = await prisma.adSet.findMany({
       where: { campaign: { adConnectionId: metaConn.id } },
@@ -204,9 +214,9 @@ export async function runMetaSync(connectionId: string) {
     });
     const adSetMap = new Map(dbAdSets.map(a => [a.platformAdSetId, a.id]));
 
-    for (const metric of metrics) {
+    await pMap(metrics, async (metric) => {
       const adSetDbId = adSetMap.get(metric.adSetId);
-      if (!adSetDbId) continue;
+      if (!adSetDbId) return;
 
       await prisma.dailyMetric.upsert({
         where: {
@@ -230,7 +240,7 @@ export async function runMetaSync(connectionId: string) {
           rawResponse: metric.rawResponse || {}
         }
       });
-    }
+    }, 16);
 
     await prisma.syncLog.update({
       where: { id: log.id },

@@ -8,6 +8,7 @@ import { runGeoSync } from "@/lib/sync/geoSync";
 import { runAbandonedCartSync } from "@/lib/sync/abandonedCartSync";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 export async function GET(req: Request) {
   // Verify authorization if CRON_SECRET is set in Vercel
