@@ -13,6 +13,7 @@ export function Sidebar({ user }: { user?: { email: string; role: string } | nul
 
   const navItems = [
     { label: "Overview", href: "/", requiresAdmin: true },
+    { label: "AI Advisor", href: "/ai-advisor", requiresAdmin: true, badge: "✨ AI" },
     { label: "Abandoned Carts", href: "/abandoned-carts", requiresAdmin: false },
     { label: "Lead Tagging", href: "/leads", requiresAdmin: false },
     { label: "Website Analytics", href: "/analytics", requiresAdmin: true },
@@ -65,18 +66,25 @@ export function Sidebar({ user }: { user?: { email: string; role: string } | nul
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-[11px] text-[14px] py-3 px-1 cursor-pointer border-l-2 transition-all ${
+                className={`flex items-center justify-between text-[14px] py-3 px-1 cursor-pointer border-l-2 transition-all ${
                   isActive
                     ? "text-white font-semibold border-white pl-[14px]"
                     : "text-stone border-transparent hover:text-white"
                 }`}
               >
-                <span
-                  className={`w-[5px] h-[5px] rounded-full shrink-0 ${
-                    isActive ? "bg-white" : "bg-stone-dark"
-                  }`}
-                ></span>
-                {item.label}
+                <span className="flex items-center gap-[11px]">
+                  <span
+                    className={`w-[5px] h-[5px] rounded-full shrink-0 ${
+                      isActive ? "bg-white" : "bg-stone-dark"
+                    }`}
+                  ></span>
+                  {item.label}
+                </span>
+                {item.badge && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
+                    {item.badge}
+                  </span>
+                )}
               </Link>
             );
           })}

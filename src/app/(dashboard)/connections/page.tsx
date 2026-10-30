@@ -2,6 +2,7 @@ import prisma from "@/lib/prisma";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
+import { getStoreMetricsSummary } from "@/lib/halteStoreDb";
 import { UnmappedCampaigns } from "@/components/UnmappedCampaigns";
 import { TeamManagement } from "@/components/TeamManagement";
 
@@ -19,7 +20,7 @@ export default async function ConnectionsPage({
 
   const isAdmin = session?.role === "ADMIN";
 
-  const [connections, unmapped, brands, users] = await Promise.all([
+  const [connections, unmapped, brands, users, storeStats] = await Promise.all([
     prisma.adConnection.findMany(),
     prisma.campaign.findMany({ where: { brandPageId: null } }),
     prisma.brand.findMany(),
@@ -28,7 +29,8 @@ export default async function ConnectionsPage({
           select: { id: true, email: true, role: true, createdAt: true }, 
           orderBy: { createdAt: "desc" } 
         })
-      : Promise.resolve([])
+      : Promise.resolve([]),
+    getStoreMetricsSummary()
   ]);
 
   // List of valid products for campaign mapping & seasonal rules
@@ -226,6 +228,27 @@ export default async function ConnectionsPage({
           <div className="text-[12px] font-semibold flex items-center text-ink-soft">
             <span className="w-2 h-2 rounded-full bg-green inline-block mr-2"></span>
             Connected
+          </div>
+        </div>
+        <div className="bg-card p-6 flex justify-between items-center">
+          <div>
+            <div className="font-serif text-[16px] font-semibold flex items-center gap-2">
+              <span className="bg-indigo-50 text-indigo-700 text-[10px] uppercase font-bold px-2 py-0.5 rounded-sm border border-indigo-200">
+                Postgres
+              </span>
+              Halte Production Store Database
+            </div>
+            <div className="text-[12px] text-ink-soft mt-1">
+              {storeStats.connected ? (
+                <>{storeStats.totalOrders.toLocaleString()} orders &middot; ₹{((storeStats.netRevenue || 0) / 10000000).toFixed(2)} Cr net revenue &middot; {storeStats.totalCustomers.toLocaleString()} customers</>
+              ) : (
+                "Connecting to store database..."
+              )}
+            </div>
+          </div>
+          <div className="text-[12px] font-semibold flex items-center text-ink-soft">
+            <span className={`w-2 h-2 rounded-full ${storeStats.connected ? "bg-green" : "bg-amber"} inline-block mr-2`}></span>
+            {storeStats.connected ? "Connected" : "Disconnected"}
           </div>
         </div>
       </div>
