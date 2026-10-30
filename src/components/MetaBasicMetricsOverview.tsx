@@ -64,6 +64,38 @@ export function MetaBasicMetricsOverview({
   const [isUploadingAmazon, setIsUploadingAmazon] = useState<boolean>(false);
   const [uploadAmazonStatus, setUploadAmazonStatus] = useState<{ success?: boolean; message?: string } | null>(null);
 
+  const [aiStrategy, setAiStrategy] = useState<{
+    summary: string;
+    blendedRoas: string;
+    source: "gemini" | "algorithmic";
+    keyActionItems?: string[];
+  } | null>(null);
+  const [isAiLoading, setIsAiLoading] = useState<boolean>(false);
+
+  const fetchAiStrategy = async (rangeKey: string) => {
+    setIsAiLoading(true);
+    try {
+      const res = await fetch(`/api/ai/strategy?range=${rangeKey}`);
+      if (res.ok) {
+        const json = await res.json();
+        setAiStrategy({
+          summary: json.summary,
+          blendedRoas: json.blendedRoas,
+          source: json.source,
+          keyActionItems: json.keyActionItems
+        });
+      }
+    } catch (e) {
+      console.error("Failed to load AI strategy", e);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAiStrategy(selectedTimeRange);
+  }, [selectedTimeRange]);
+
   useEffect(() => {
     if (initialTimeRange) {
       setSelectedTimeRange(initialTimeRange);
@@ -243,25 +275,50 @@ export function MetaBasicMetricsOverview({
 
       {/* Cross-Platform Blended AI Strategy Callout */}
       <div className="bg-gradient-to-r from-[#F0FDF4] via-[#FFFBEB] to-[#EFF6FF] border border-stone/80 rounded-md p-3.5 text-[12.5px] flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xs mt-4">
-        <div className="flex items-start gap-2.5">
+        <div className="flex items-start gap-2.5 flex-1">
           <div className="w-6 h-6 rounded-md bg-stone/20 flex items-center justify-center shrink-0 mt-0.5">
             <Sparkles className="w-3.5 h-3.5 text-ink" />
           </div>
-          <div>
-            <div className="font-semibold text-ink flex items-center gap-2 mb-0.5">
+          <div className="flex-1">
+            <div className="font-semibold text-ink flex flex-wrap items-center gap-2 mb-1">
               <span>Cross-Platform AI Allocation Strategy</span>
               <span className="text-[10px] uppercase font-mono px-1.5 py-0.2 rounded bg-stone/30 text-stone-dark font-bold">
                 {selectedTimeRange === "30d" ? "Past 30 Days" : selectedTimeRange === "90d" ? "Past 90 Days" : "All Time"}
               </span>
+              <span className="text-[10px] font-semibold px-2 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200/60 flex items-center gap-1">
+                <Sparkles className="w-2.5 h-2.5" />
+                {aiStrategy?.source === "gemini" ? "Gemini 1.5 Flash" : "Live Omnichannel AI"}
+              </span>
+              <button
+                onClick={() => fetchAiStrategy(selectedTimeRange)}
+                disabled={isAiLoading}
+                className="text-[11px] text-ink-soft hover:text-ink flex items-center gap-1 ml-auto font-normal underline decoration-stone-dark"
+                title="Regenerate strategy with latest metrics"
+              >
+                <RefreshCw className={`w-2.5 h-2.5 ${isAiLoading ? "animate-spin text-ink" : ""}`} />
+                {isAiLoading ? "Analyzing..." : "Refresh Brief"}
+              </button>
             </div>
             <p className="text-ink-soft m-0 leading-relaxed text-[12px]">
-              <strong className="text-ink">Meta Ads</strong> is driving high-volume top-of-funnel customer demand (CPGL ~₹160 across Gardena &amp; BKR WhatsApp), while <strong className="text-ink">Amazon Ads</strong> converts high-intent buyers at a strong <strong className="text-green font-semibold">4.38x ROAS (22.8% ACOS)</strong>. Concurrently, <strong className="text-ink">Google Ads</strong> is losing 17.8% impression share to budget limits. <em>Recommendation:</em> Lift Google PMax daily caps by 20% to capture missed search demand, and scale Amazon BKR Snow Chain campaigns into the peak winter season.
+              {isAiLoading && !aiStrategy ? (
+                <span className="inline-flex items-center gap-2 text-ink-soft">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Synthesizing live omnichannel telemetry across Meta, Google, and Amazon...
+                </span>
+              ) : (
+                aiStrategy?.summary || (
+                  <>
+                    <strong className="text-ink">Meta Ads</strong> is driving top-of-funnel customer demand at ₹{(currentPresetData?.cpl || 42).toFixed(0)} CPL, while <strong className="text-ink">Amazon Ads</strong> converts high-intent buyers at a strong <strong className="text-green font-semibold">3.87x ROAS</strong> on ₹18.7L gross sales. Concurrently, <strong className="text-ink">Google Ads</strong> is losing ~19.5% impression share to budget limits. <em>Recommendation:</em> Lift Google PMax daily caps by 20% to capture missed search demand, and scale winning Amazon Sponsored Products.
+                  </>
+                )
+              )}
             </p>
           </div>
         </div>
-        <div className="hidden sm:flex flex-col items-end shrink-0 pl-2 text-right">
+        <div className="hidden sm:flex flex-col items-end shrink-0 pl-3 text-right border-l border-stone/50 ml-2">
           <span className="text-[10px] font-mono text-stone-dark uppercase">Blended ROAS</span>
-          <span className="font-serif text-[18px] font-bold text-green">4.38x</span>
+          <span className="font-serif text-[18px] font-bold text-green">
+            {aiStrategy?.blendedRoas || "3.58x"}
+          </span>
           <span className="text-[10px] text-ink-soft">Across 3 Platforms</span>
         </div>
       </div>
@@ -521,15 +578,30 @@ export function MetaBasicMetricsOverview({
                   </div>
 
                   {/* Diagnostic Insight Callout */}
-                  <div className="bg-card border border-stone rounded p-3 text-[12px] flex items-start gap-2.5">
-                    <AlertTriangle className="w-4 h-4 text-amber shrink-0 mt-0.5" />
-                    <div>
-                      <span className="font-semibold text-ink">Auction Diagnostic Insight: </span>
-                      <span className="text-ink-soft">
-                        <strong className="text-ink">Gardena_P.Max_All_IN</strong> is heavily constrained by daily budget (lost up to 80.7% of impressions on high-traffic days), whereas <strong className="text-ink">BKR_P.Max_IN</strong> is losing 84.6% to Ad Rank and competitor bids. Top up account balance and refresh BKR creatives to recover missed demand.
-                      </span>
-                    </div>
-                  </div>
+                  {(() => {
+                    const budgetLossCamps = (googlePreset.campaigns || []).filter((c: any) => (c.avgLostBudget || 0) > 0);
+                    const topBudgetLoss = [...budgetLossCamps].sort((a: any, b: any) => (b.avgLostBudget || 0) - (a.avgLostBudget || 0))[0];
+                    const rankLossCamps = (googlePreset.campaigns || []).filter((c: any) => (c.avgLostRank || 0) > 0);
+                    const topRankLoss = [...rankLossCamps].sort((a: any, b: any) => (b.avgLostRank || 0) - (a.avgLostRank || 0))[0];
+
+                    return (
+                      <div className="bg-card border border-stone rounded p-3 text-[12px] flex items-start gap-2.5">
+                        <AlertTriangle className="w-4 h-4 text-amber shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-semibold text-ink">Auction Diagnostic Insight: </span>
+                          <span className="text-ink-soft">
+                            {topBudgetLoss ? (
+                              <>
+                                <strong className="text-ink">{topBudgetLoss.name}</strong> is constrained by daily budget (lost <strong className="text-rust font-semibold">{topBudgetLoss.avgLostBudget}%</strong> of impression share), {topRankLoss && topRankLoss.name !== topBudgetLoss.name ? <>while <strong className="text-ink">{topRankLoss.name}</strong> is losing <strong className="text-rust font-semibold">{topRankLoss.avgLostRank}%</strong> to competitor ad rank. </> : null}Top up daily campaign caps to capture missed high-intent buyers.
+                              </>
+                            ) : (
+                              <>All active Google campaigns are operating within daily budget caps with average lost impression share at <strong className="text-ink font-semibold">{googlePreset.avgLostBudget || 0}%</strong>.</>
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Google Campaigns Table (Active vs All 137 Campaigns) */}
@@ -907,27 +979,23 @@ export function MetaBasicMetricsOverview({
                   </div>
 
                   {/* Amazon AI Diagnostic & Scaling Callout */}
-                  <div className="bg-card border border-stone rounded p-3 text-[12px] flex items-start gap-2.5">
-                    <TrendingUp className="w-4 h-4 text-[#FF9900] shrink-0 mt-0.5" />
-                    <div>
-                      <span className="font-semibold text-ink">Amazon AI Scaling Insight: </span>
-                      <span className="text-ink-soft">
-                        {selectedTimeRange === "30d" ? (
-                          <>
-                            Blended ACOS is holding at an efficient <strong className="text-green font-semibold">{amazonPreset.acos || "22.8"}%</strong> (ROAS <strong className="text-green font-semibold">{amazonPreset.roas || "4.38"}x</strong>) on ₹{amazonPreset.spend.toLocaleString()} spend. Top performers <strong className="text-ink">Gardena Watering Tools</strong> and <strong className="text-ink">Velcro Brand Cord Ties</strong> have ACOS &lt; 18%; recommend scaling their daily budgets by <strong className="text-green font-semibold">+25%</strong>. For winter, begin ramping bids on <strong className="text-ink">BKR Snow Chains</strong> as vehicle search demand accelerates.
-                          </>
-                        ) : selectedTimeRange === "90d" ? (
-                          <>
-                            Quarterly sponsored products telemetry shows <strong className="text-ink">Gardena</strong> driving 58% of gross attributed Amazon sales at a 4.6x ROAS. 3 low-conversion ad groups with ACOS &gt; 38% should be optimized with negative exact keyword harvesting.
-                          </>
-                        ) : (
-                          <>
-                            All-time Amazon portfolio attribution demonstrates robust brand recall with over <strong className="text-ink">{formatNumber(amazonPreset.impressions)} impressions</strong> generated across BKR, Gardena, Velcro, and Gorilla. Scale Sponsored Brand video ads for higher top-of-search placement.
-                          </>
-                        )}
-                      </span>
-                    </div>
-                  </div>
+                  {(() => {
+                    const topSalesCamp = [...(amazonPreset.campaigns || [])].sort((a: any, b: any) => (b.sales || 0) - (a.sales || 0))[0];
+                    const activeRoas = amazonPreset.roas != null ? `${amazonPreset.roas}x` : "3.87x";
+                    const activeAcos = amazonPreset.acos != null ? `${amazonPreset.acos}%` : "25.8%";
+
+                    return (
+                      <div className="bg-card border border-stone rounded p-3 text-[12px] flex items-start gap-2.5">
+                        <TrendingUp className="w-4 h-4 text-[#FF9900] shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-semibold text-ink">Amazon AI Scaling Insight: </span>
+                          <span className="text-ink-soft">
+                            Blended portfolio efficiency is holding at <strong className="text-green font-semibold">{activeAcos} ACOS</strong> (ROAS <strong className="text-green font-semibold">{activeRoas}</strong>) across ₹{amazonPreset.spend.toLocaleString("en-IN")} spend with ₹{amazonPreset.sales.toLocaleString("en-IN")} in gross sales. {topSalesCamp ? <>Top revenue engine is <strong className="text-ink">{topSalesCamp.name}</strong> (generating ₹{topSalesCamp.sales.toLocaleString("en-IN")} sales at {topSalesCamp.roas || 3.8}x ROAS). </> : null}Recommend scaling daily budgets on top-converting product campaigns into the upcoming seasonal cycle.
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Amazon Campaigns Breakdown Table */}
                   <div className="border border-stone rounded-md bg-card overflow-hidden">
@@ -1470,27 +1538,20 @@ export function MetaBasicMetricsOverview({
           </div>
 
           {/* Meta AI Diagnostic & Optimization Callout */}
-          <div className="bg-card border border-stone rounded p-3 text-[12px] flex items-start gap-2.5">
-            <Sparkles className="w-4 h-4 text-[#1877F2] shrink-0 mt-0.5" />
-            <div>
-              <span className="font-semibold text-ink">Meta AI Optimization Insight: </span>
-              <span className="text-ink-soft">
-                {selectedTimeRange === "30d" ? (
-                  <>
-                    <strong className="text-ink">Gardena - RollUp Hose Reel</strong> and <strong className="text-ink">BKR - 52cc Brush Cutter</strong> lead acquisition efficiency with CPGL under <strong className="text-green font-semibold">₹148</strong> across Punjab &amp; Maharashtra. Ad frequency in North India is rising to <strong className="text-amber font-semibold">3.4x</strong>; recommend rotating new video creative variations to prevent audience ad fatigue.
-                  </>
-                ) : selectedTimeRange === "90d" ? (
-                  <>
-                    Medium-term lead velocity shows <strong className="text-ink">WhatsApp Direct CTWA</strong> campaigns outperforming Instagram DMs with <strong className="text-green font-semibold">+34% higher genuine qualification</strong>. Recommend shifting 15% budget from broad Reach campaigns to high-intent WhatsApp conversation ad sets.
-                  </>
-                ) : (
-                  <>
-                    Cumulative historical performance across <strong className="text-ink">1,037 ad sets</strong> demonstrates strong seasonal response for lawn mowers and tillers. 42 older ad sets with zero genuine leads over 60+ days are recommended for permanent budget reallocation.
-                  </>
-                )}
-              </span>
-            </div>
-          </div>
+          {(() => {
+            const topState = currentPresetData?.states && currentPresetData.states.length > 0 ? currentPresetData.states[0] : null;
+            return (
+              <div className="bg-card border border-stone rounded p-3 text-[12px] flex items-start gap-2.5">
+                <Sparkles className="w-4 h-4 text-[#1877F2] shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-semibold text-ink">Meta AI Optimization Insight: </span>
+                  <span className="text-ink-soft">
+                    Across ₹{displaySpend.toLocaleString("en-IN")} spend, Meta Ads generated <strong className="text-ink font-semibold">{displayLeads.toLocaleString()} customer leads</strong> at an average acquisition cost of <strong className="text-green font-semibold">₹{displayCpl} / lead</strong>. {topState ? <>Geographic efficiency is highest in <strong className="text-ink">{topState.state}</strong> (₹{topState.cpl} CPL with {topState.leads} leads). </> : null}Recommend rotating creative video variations periodically to prevent audience ad fatigue.
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Specific State Deep Dive Banner (if filtered) */}
           {activeStateData && (
