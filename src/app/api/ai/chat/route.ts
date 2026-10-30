@@ -3,9 +3,27 @@ import prisma from "@/lib/prisma";
 import { getMetaOverviewMetrics } from "@/lib/metaBasicMetrics";
 import { getGoogleOverviewMetrics } from "@/lib/googleMetrics";
 import { getAmazonOverviewMetrics } from "@/lib/amazonMetrics";
-import { getStoreMetricsSummary } from "@/lib/halteStoreDb";
+import { getStoreMetricsSummary, runSafeStoreQuery } from "@/lib/halteStoreDb";
 
 export const dynamic = "force-dynamic";
+
+async function runSafeAdsQuery(sql: string): Promise<any[]> {
+  const clean = sql.trim().replace(/;+$/, "");
+  const lower = clean.toLowerCase();
+  if (!lower.startsWith("select") && !lower.startsWith("with")) {
+    throw new Error("Only read-only SELECT queries are permitted.");
+  }
+  const forbidden = ["insert ", "update ", "delete ", "drop ", "alter ", "truncate ", "create "];
+  if (forbidden.some((f) => lower.includes(f))) {
+    throw new Error("Mutation queries are blocked for database safety.");
+  }
+  const cappedSql = lower.includes("limit") ? clean : `${clean} LIMIT 50`;
+  const result: any = await prisma.$queryRawUnsafe(cappedSql);
+  // Safely serialize BigInt values
+  return JSON.parse(
+    JSON.stringify(result, (_, value) => (typeof value === "bigint" ? Number(value) : value))
+  );
+}
 
 export async function POST(req: Request) {
   try {
@@ -90,12 +108,54 @@ ${(storeData?.recentCustomers || []).slice(0, 3).map((c: any) => `  - ${c.name} 
   - 30-Day: ₹${(amazon30.spend || 0).toLocaleString("en-IN")} spend · ₹${(amazon30.sales || 0).toLocaleString("en-IN")} sales · ${amazon30.roas || 3.87}x ROAS · ${amazon30.acos || 25.8}% ACOS
   - 90-Day: ₹${(amazon90.spend || 0).toLocaleString("en-IN")} spend · ₹${(amazon90.sales || 0).toLocaleString("en-IN")} sales
   - Top Converting Campaign: ${amazon30.campaigns?.[0]?.name || "KTK Gardena Manual SP"}
+  - Attribution Note: Amazon Sponsored Ads reports attributed gross revenue (₹${(amazon30.sales || 0).toLocaleString("en-IN")}). The actual customer order count (${storeData?.totalOrders?.toLocaleString() || "29,484"} orders) is tracked and fulfilled in the Halte Core Store Database.
 
-=== HOW TO ANSWER ===
-1. You have direct visibility into this live data. Answer immediately and definitively.
-2. Quote the exact numbers, states, SKUs, and campaigns above.
-3. When asked for recommendations, give prioritized, tactical, step-by-step advice (e.g. where to shift ₹X budget, which products to scale, which campaigns have ad fatigue).
-4. Use clear GitHub-flavored markdown with bolding, bullet points, and tables.`;
+=== HOW TO ANSWER & ACCESS DEEP DATA ===
+1. You have direct visibility into this live summary data.
+2. CRITICAL CAPABILITY: You have real-time live tools to run exact SELECT queries whenever the user asks for:
+   - Daily breakdown or specific date ranges
+   - Specific Indian states, cities, or postal codes
+   - Specific product SKUs, margins, or cancellations
+   - Specific customer names, phone numbers, or VIP purchase history
+   - Specific abandoned carts on Halte.in or website telemetry
+   USE YOUR TOOLS whenever the user's question requires granular, exact historical or daily extraction!
+3. Format your responses with clean Markdown, bold metrics, and structured tables.`;
+
+    // Tool declarations for autonomous database querying
+    const tools = [
+      {
+        functionDeclarations: [
+          {
+            name: "query_store_database",
+            description: "Executes a safe read-only SELECT query on the Halte Production Store Database. Tables available: 'orders' (id, amazon_order_id, purchase_date, last_updated_date, order_status, fulfillment_channel, sales_channel, sku, asin, item_status, quantity, currency, item_price, item_tax, cogs_price, profit, ship_city, ship_state, shipping_price, ship_postal_code, amazon_fee), 'customers' (id, customer_id, name, phone, email, address, city, state, pincode, total_orders, total_spent, notes, created_at, channel), 'PowerBISales' (Date, Year, Month_Name, BRAND, Item Description, Sku, Category, Ship To City, Ship To State, Invoice Amount, Quantity), 'cogs' (sku, brand, cost_price).",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                sql: {
+                  type: "STRING",
+                  description: "Safe read-only SELECT query (e.g. SELECT purchase_date::date, count(*), sum(item_price*quantity) FROM orders WHERE purchase_date >= '2026-10-01' GROUP BY 1 ORDER BY 1)"
+                }
+              },
+              required: ["sql"]
+            }
+          },
+          {
+            name: "query_ads_and_telemetry_database",
+            description: "Executes a safe read-only SELECT query on the Halte Ad Intelligence & Telemetry Database. Tables available: 'AbandonedCart' (id, customerName, customerEmail, customerPhone, city, state, zipCode, cartValue, itemCount, items, status, createdAt), 'WebsiteAnalytics' (id, pagePath, pageTitle, brand, referrer, deviceType, timeSpentSec, maxScrollPct, clicksCount, isExit, createdAt), 'DailyMetric' (id, adSetId, date, spend, impressions, clicks, rawResponse), 'Campaign' (id, name, objective, format, region, products).",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                sql: {
+                  type: "STRING",
+                  description: "Safe read-only SELECT query on ad intelligence tables (table names in double quotes, e.g. SELECT * FROM \"AbandonedCart\" ORDER BY \"cartValue\" DESC LIMIT 5)"
+                }
+              },
+              required: ["sql"]
+            }
+          }
+        ]
+      }
+    ];
 
     // Format conversation history for Gemini
     const contents: any[] = [];
@@ -104,32 +164,90 @@ ${(storeData?.recentCustomers || []).slice(0, 3).map((c: any) => `  - ${c.name} 
       parts: [{ text: systemContext + "\n\nUser Question: " + userMessage }]
     });
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    const candidateModels = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"];
 
-    const geminiRes = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents,
-        generationConfig: {
-          temperature: 0.4,
-          maxOutputTokens: 1200
+    const executeGeminiCall = async (payloadContents: any[], includeTools: boolean = true) => {
+      let lastError = "";
+      for (const model of candidateModels) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        try {
+          const bodyPayload: any = {
+            contents: payloadContents,
+            generationConfig: {
+              temperature: 0.3,
+              maxOutputTokens: 1500
+            }
+          };
+          if (includeTools) {
+            bodyPayload.tools = tools;
+          }
+
+          const res = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(bodyPayload),
+            cache: "no-store"
+          });
+
+          if (res.ok) {
+            return await res.json();
+          }
+          lastError = await res.text();
+        } catch (e: any) {
+          lastError = e.message;
         }
-      }),
-      cache: "no-store"
-    });
+      }
+      throw new Error(`Gemini Error: ${lastError.substring(0, 300)}`);
+    };
 
-    if (!geminiRes.ok) {
-      const err = await geminiRes.text();
-      throw new Error(`Gemini Error (${geminiRes.status}): ${err.substring(0, 300)}`);
+    // First Turn: Send user question and tools
+    const geminiData1 = await executeGeminiCall(contents, true);
+    const candidate1 = geminiData1.candidates?.[0]?.content;
+    const functionCall = candidate1?.parts?.find((p: any) => p.functionCall)?.functionCall;
+
+    let finalReply = candidate1?.parts?.find((p: any) => p.text)?.text || "";
+
+    // If Gemini requested database data via Function Calling, execute query and perform Second Turn
+    if (functionCall) {
+      const toolName = functionCall.name;
+      const requestedSql = functionCall.args?.sql || "";
+      let queryResult: any[] = [];
+      let queryError = null;
+
+      try {
+        if (toolName === "query_store_database") {
+          queryResult = await runSafeStoreQuery(requestedSql);
+        } else if (toolName === "query_ads_and_telemetry_database") {
+          queryResult = await runSafeAdsQuery(requestedSql);
+        }
+      } catch (err: any) {
+        queryError = err.message;
+      }
+
+      // Append assistant's function call turn
+      contents.push(candidate1);
+
+      // Append tool execution result back to Gemini
+      contents.push({
+        role: "user",
+        parts: [
+          {
+            functionResponse: {
+              name: toolName,
+              response: queryError ? { error: queryError } : { rows: queryResult, count: queryResult.length }
+            }
+          }
+        ]
+      });
+
+      // Second Turn: Gemini synthesizes the real database rows into the final answer
+      const geminiData2 = await executeGeminiCall(contents, false);
+      finalReply = geminiData2.candidates?.[0]?.content?.parts?.[0]?.text || finalReply;
     }
-
-    const geminiData = await geminiRes.json();
-    const reply = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
 
     return NextResponse.json({
       success: true,
-      reply,
+      reply: finalReply || "Unable to extract answer.",
       timestamp: new Date().toISOString()
     });
   } catch (error: any) {

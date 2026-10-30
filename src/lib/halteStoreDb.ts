@@ -154,3 +154,27 @@ export async function getStoreMetricsSummary(): Promise<StoreStatsSummary> {
     };
   }
 }
+
+/**
+ * Executes a safe, read-only SELECT query directly on the Halte production database.
+ */
+export async function runSafeStoreQuery(sql: string): Promise<any[]> {
+  const p = getStorePool();
+  if (!p) throw new Error("Store database pool is not connected.");
+
+  const clean = sql.trim().replace(/;+$/, "");
+  const lower = clean.toLowerCase();
+  if (!lower.startsWith("select") && !lower.startsWith("with")) {
+    throw new Error("Only read-only SELECT queries are permitted.");
+  }
+
+  const forbidden = ["insert ", "update ", "delete ", "drop ", "alter ", "truncate ", "grant ", "revoke ", "create "];
+  if (forbidden.some(f => lower.includes(f))) {
+    throw new Error("Mutation queries are blocked for database safety.");
+  }
+
+  // Ensure query has a limit to prevent memory spikes
+  const cappedSql = lower.includes("limit") ? clean : `${clean} LIMIT 50`;
+  const res = await p.query(cappedSql);
+  return res.rows;
+}
