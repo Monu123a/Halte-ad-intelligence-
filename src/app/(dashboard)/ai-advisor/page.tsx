@@ -26,7 +26,7 @@ export default async function AIAdvisorPage() {
         </div>
       </div>
 
-      <AIAdvisorChat storeSummary={storeSummary} />
+      <AIAdvisorChat storeSummary={storeSummary} userId={session?.id} />
     </div>
   );
 }

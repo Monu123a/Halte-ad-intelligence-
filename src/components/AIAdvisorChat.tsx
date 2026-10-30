@@ -51,7 +51,8 @@ const STORAGE_KEY = "halte_ai_advisor_sessions_v2";
 const CURRENT_ID_KEY = "halte_ai_current_session_id_v2";
 
 export function AIAdvisorChat({
-  storeSummary
+  storeSummary,
+  userId
 }: {
   storeSummary?: {
     connected: boolean;
@@ -61,7 +62,10 @@ export function AIAdvisorChat({
     totalCustomers: number;
     cancellationRate: string;
   };
+  userId?: string;
 }) {
+  const userStorageKey = userId ? `halte_ai_advisor_sessions_${userId}` : STORAGE_KEY;
+  const userCurrentIdKey = userId ? `halte_ai_current_session_id_${userId}` : CURRENT_ID_KEY;
   const totalOrdersCount =
     storeSummary?.totalOrders && storeSummary.totalOrders > 0
       ? storeSummary.totalOrders.toLocaleString()
@@ -112,11 +116,11 @@ I am directly connected to your **Halte Production Store Database** (${totalOrde
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Load sessions from localStorage on mount
+  // Load sessions from localStorage on mount (scoped to logged-in user)
   useEffect(() => {
     try {
-      const savedSessionsRaw = localStorage.getItem(STORAGE_KEY);
-      const savedCurrentId = localStorage.getItem(CURRENT_ID_KEY);
+      const savedSessionsRaw = localStorage.getItem(userStorageKey) || localStorage.getItem(STORAGE_KEY);
+      const savedCurrentId = localStorage.getItem(userCurrentIdKey) || localStorage.getItem(CURRENT_ID_KEY);
 
       if (savedSessionsRaw) {
         const parsed: ChatSession[] = JSON.parse(savedSessionsRaw);
@@ -141,20 +145,20 @@ I am directly connected to your **Halte Production Store Database** (${totalOrde
     setSessions([initialSession]);
     setCurrentSessionId(initialSession.id);
     setIsLoaded(true);
-  }, [createNewSession]);
+  }, [createNewSession, userStorageKey, userCurrentIdKey]);
 
-  // Save sessions to localStorage on state changes
+  // Save sessions to localStorage on state changes (isolated per user)
   useEffect(() => {
     if (!isLoaded) return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
+      localStorage.setItem(userStorageKey, JSON.stringify(sessions));
       if (currentSessionId) {
-        localStorage.setItem(CURRENT_ID_KEY, currentSessionId);
+        localStorage.setItem(userCurrentIdKey, currentSessionId);
       }
     } catch (e) {
       console.warn("Failed to persist chat sessions to localStorage", e);
     }
-  }, [sessions, currentSessionId, isLoaded]);
+  }, [sessions, currentSessionId, isLoaded, userStorageKey, userCurrentIdKey]);
 
   const currentSession = useMemo(() => {
     return sessions.find((s) => s.id === currentSessionId) || sessions[0] || null;
