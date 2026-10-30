@@ -143,7 +143,7 @@ Format your response as a strict JSON object with these two keys:
 }
 Only output the raw JSON, without markdown code fences.`;
 
-  const candidateModels = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"];
+  const candidateModels = ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-2.5-flash"];
   let res: Response | null = null;
   let lastErr = "";
 

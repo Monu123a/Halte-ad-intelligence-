@@ -189,7 +189,7 @@ ${(storeData?.recentCustomers || []).slice(0, 3).map((c: any) => `  - ${c.name} 
       parts: [{ text: systemContext + "\n\nUser Question: " + userMessage }]
     });
 
-    const candidateModels = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"];
+    const candidateModels = ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-2.5-flash"];
 
     const executeGeminiCall = async (payloadContents: any[], includeTools: boolean = true) => {
       let lastError = "";
@@ -259,7 +259,8 @@ ${(storeData?.recentCustomers || []).slice(0, 3).map((c: any) => `  - ${c.name} 
           {
             functionResponse: {
               name: toolName,
-              response: queryError ? { error: queryError } : { rows: queryResult, count: queryResult.length }
+              response: queryError ? { error: queryError } : { rows: queryResult, count: queryResult.length },
+              ...(functionCall.id ? { id: functionCall.id } : {})
             }
           }
         ]
