@@ -287,7 +287,7 @@ export function MetaBasicMetricsOverview({
               </span>
               <span className="text-[10px] font-semibold px-2 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200/60 flex items-center gap-1">
                 <Sparkles className="w-2.5 h-2.5" />
-                {aiStrategy?.source === "gemini" ? "Gemini 1.5 Flash" : "Live Omnichannel AI"}
+                {aiStrategy?.source === "gemini" ? "Gemini 2.5 Flash" : "Live Omnichannel AI"}
               </span>
               <button
                 onClick={() => fetchAiStrategy(selectedTimeRange)}
