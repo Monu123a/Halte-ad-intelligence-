@@ -5,6 +5,8 @@ import { getGoogleOverviewMetrics } from "@/lib/googleMetrics";
 import { getAmazonOverviewMetrics } from "@/lib/amazonMetrics";
 import { getStoreMetricsSummary, runSafeStoreQuery } from "@/lib/halteStoreDb";
 
+import { getGeminiApiKey } from "@/lib/geminiKey";
+
 export const dynamic = "force-dynamic";
 
 async function runSafeAdsQuery(sql: string): Promise<any[]> {
@@ -35,7 +37,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
     }
 
-    const apiKey = (process.env.GEMINI_API_KEY || "").trim();
+    const apiKey = getGeminiApiKey();
     if (!apiKey) {
       return NextResponse.json({
         reply: "Gemini API key is not configured. Please add `GEMINI_API_KEY` to your environment variables to enable the AI Advisor."

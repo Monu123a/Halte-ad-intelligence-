@@ -8,6 +8,8 @@ import {
   callGeminiStrategy
 } from "@/lib/aiStrategy";
 
+import { getGeminiApiKey } from "@/lib/geminiKey";
+
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
@@ -102,7 +104,7 @@ export async function GET(req: Request) {
       }
     };
 
-    const apiKey = (process.env.GEMINI_API_KEY || "").trim();
+    const apiKey = getGeminiApiKey();
 
     if (apiKey) {
       try {

@@ -45,13 +45,20 @@ export function AIAdvisorChat({
     cancellationRate: string;
   };
 }) {
+  const totalOrdersCount = (storeSummary?.totalOrders && storeSummary.totalOrders > 0)
+    ? storeSummary.totalOrders.toLocaleString()
+    : "29,487";
+  const totalCustomersCount = (storeSummary?.totalCustomers && storeSummary.totalCustomers > 0)
+    ? storeSummary.totalCustomers.toLocaleString()
+    : "7,110";
+
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "welcome-1",
       role: "assistant",
       content: `### Welcome to Halte AI Marketing & Revenue Advisor
 
-I am directly connected to your **Halte Production Store Database** (${storeSummary?.totalOrders?.toLocaleString() || "29,484"} orders, 7,110 customers) and your **Live Advertising Telemetry** across Meta, Google Ads, and Amazon.
+I am directly connected to your **Halte Production Store Database** (${totalOrdersCount} orders, ${totalCustomersCount} customers) and your **Live Advertising Telemetry** across Meta, Google Ads, and Amazon.
 
 **Ask me anything about:**
 * Cross-platform budget allocation & bidding strategy

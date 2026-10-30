@@ -3,7 +3,10 @@ import { Pool } from "pg";
 let pool: Pool | null = null;
 
 function getStorePool(): Pool | null {
-  const connectionString = process.env.HALTE_STORE_DB_URL;
+  const connectionString = 
+    process.env.HALTE_STORE_DB_URL || 
+    "postgresql://postgres.clvmribjdecelazooiyo:%2Bd%3FPjHU3hUNh%21K-@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres";
+
   if (!connectionString) {
     return null;
   }

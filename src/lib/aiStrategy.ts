@@ -131,7 +131,7 @@ Analyze the following LIVE cross-platform advertising telemetry for Halte during
 
 - Meta Ads: Total spend ₹${telemetry.meta.spend.toLocaleString("en-IN")}, Impressions: ${telemetry.meta.impressions.toLocaleString("en-IN")}, Leads: ${telemetry.meta.leads}, Cost Per Lead: ₹${telemetry.meta.cpl.toFixed(0)}, Top State: ${telemetry.meta.topState || "All India"}
 - Google Ads: Total spend ₹${telemetry.google.spend.toLocaleString("en-IN")}, Clicks: ${telemetry.google.clicks}, Conversions: ${telemetry.google.conversions}, CPC: ₹${telemetry.google.cpc.toFixed(2)}, Avg Lost Impression Share to Budget: ${telemetry.google.avgLostBudget || 0}%, Avg Lost IS to Rank: ${telemetry.google.avgLostRank || 0}%, Top Constrained Campaign: ${telemetry.google.topConstrainedCampaign ? telemetry.google.topConstrainedCampaign.name + ' (lost ' + telemetry.google.topConstrainedCampaign.lostBudget + '% to budget)' : 'None'}
-- Amazon Ads: Total spend ₹${telemetry.amazon.spend.toLocaleString("en-IN")}, Gross Sales: ₹${telemetry.amazon.sales.toLocaleString("en-IN")}, ROAS: ${telemetry.amazon.roas || 0}x, ACOS: ${telemetry.amazon.acos || 0}%, Orders: ${telemetry.amazon.orders}, Top Campaign: ${telemetry.amazon.topCampaign ? telemetry.amazon.topCampaign.name : 'All Campaigns'}
+- Amazon Ads: Total spend ₹${telemetry.amazon.spend.toLocaleString("en-IN")}, Attributed Gross Sales: ₹${telemetry.amazon.sales.toLocaleString("en-IN")}, ROAS: ${telemetry.amazon.roas || 0}x, ACOS: ${telemetry.amazon.acos || 0}%, Top Campaign: ${telemetry.amazon.topCampaign ? telemetry.amazon.topCampaign.name : 'All Campaigns'} (Note: Actual order fulfillment and individual customer units are tracked in the Halte Core Store Database, not the ad report)
 - Blended Cross-Platform Spend: ₹${telemetry.blendedSpend.toLocaleString("en-IN")}
 - Blended Return on Ad Spend: ${telemetry.blendedRoas ? telemetry.blendedRoas.toFixed(2) + 'x' : 'N/A'}
 
@@ -143,24 +143,35 @@ Format your response as a strict JSON object with these two keys:
 }
 Only output the raw JSON, without markdown code fences.`;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-  
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.3,
-        responseMimeType: "application/json"
-      }
-    }),
-    cache: "no-store"
-  });
+  const candidateModels = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"];
+  let res: Response | null = null;
+  let lastErr = "";
 
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Gemini API Error (${res.status}): ${errText.substring(0, 300)}`);
+  for (const model of candidateModels) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.3,
+            responseMimeType: "application/json"
+          }
+        }),
+        cache: "no-store"
+      });
+
+      if (res.ok) break;
+      lastErr = await res.text();
+    } catch (e: any) {
+      lastErr = e.message;
+    }
+  }
+
+  if (!res || !res.ok) {
+    throw new Error(`Gemini Error: ${lastErr.substring(0, 300)}`);
   }
 
   const data = await res.json();
