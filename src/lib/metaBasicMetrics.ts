@@ -28,6 +28,7 @@ export interface PresetBasicMetrics {
 }
 
 export interface MetaBasicMetricsReport {
+  lastSyncedAt?: Date | null;
   all: PresetBasicMetrics;
   "90d": PresetBasicMetrics;
   "30d": PresetBasicMetrics;
@@ -51,7 +52,15 @@ const VERIFIED_REACH_MAP = {
 };
 
 export async function getMetaOverviewMetrics(customRange?: { from?: Date; to?: Date }): Promise<MetaBasicMetricsReport> {
-  const report: Partial<MetaBasicMetricsReport> = {};
+  const metaConn = await prisma.adConnection.findFirst({
+    where: { platform: "META" },
+    orderBy: { lastSyncedAt: "desc" },
+    select: { lastSyncedAt: true }
+  });
+
+  const report: Partial<MetaBasicMetricsReport> = {
+    lastSyncedAt: metaConn?.lastSyncedAt || null
+  };
 
   for (const [key, date] of Object.entries(PRESET_DATES) as Array<[keyof typeof PRESET_DATES, Date]>) {
     const rows = await prisma.geoMetric.findMany({ where: { date } });

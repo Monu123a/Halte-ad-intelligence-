@@ -1,10 +1,11 @@
-import { getDashboardRecommendations, getOverviewStats } from "@/lib/services";
+import { getDashboardRecommendations, getOverviewStats, getSyncTimelineOverview } from "@/lib/services";
 import { getWebsiteAnalyticsData, formatDuration } from "@/lib/analyticsService";
 import { getMetaOverviewMetrics } from "@/lib/metaBasicMetrics";
 import { getGoogleOverviewMetrics } from "@/lib/googleMetrics";
 import { getAmazonOverviewMetrics } from "@/lib/amazonMetrics";
 import { MetaBasicMetricsOverview } from "@/components/MetaBasicMetricsOverview";
 import { DateRangeSelector } from "@/components/DateRangeSelector";
+import { SyncTimelineBadge } from "@/components/SyncTimelineBadge";
 import prisma from "@/lib/prisma";
 import Link from "next/link";
 import { getSession } from "@/lib/auth";
@@ -44,7 +45,7 @@ async function OverviewContent({
     ? { from: new Date(from), to: to ? new Date(to) : undefined }
     : undefined;
 
-  const [recommendationsRaw, stats, { overview: webOverview }, brands, metaBasicMetrics, googleBasicMetrics, amazonBasicMetrics] = await Promise.all([
+  const [recommendationsRaw, stats, { overview: webOverview }, brands, metaBasicMetrics, googleBasicMetrics, amazonBasicMetrics, syncTimeline] = await Promise.all([
     getDashboardRecommendations(range, customRange),
     getOverviewStats(range, customRange),
     getWebsiteAnalyticsData(
@@ -55,7 +56,8 @@ async function OverviewContent({
     prisma.brand.findMany(),
     getMetaOverviewMetrics(customRange),
     getGoogleOverviewMetrics(customRange),
-    getAmazonOverviewMetrics(customRange)
+    getAmazonOverviewMetrics(customRange),
+    getSyncTimelineOverview()
   ]);
 
   // Platform Counts for tabs
@@ -165,7 +167,7 @@ async function OverviewContent({
           </p>
         </div>
 
-        {/* Global Date Range Selector */}
+        {/* Global Date Range Selector & Sync Timeline Status */}
         <div className="flex items-center gap-3">
           <DateRangeSelector
             currentRange={range}
@@ -175,9 +177,10 @@ async function OverviewContent({
             currentFilter={filter}
           />
 
-          <div className="text-[12px] border border-stone px-3 py-1.5 text-ink-soft bg-card rounded hidden sm:block">
-            {stats.latestSync ? `Synced: ${new Date(stats.latestSync.finishedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Live'}
-          </div>
+          <SyncTimelineBadge
+            timeline={syncTimeline}
+            activePlatform={selectedPlatformFilter}
+          />
         </div>
       </div>
 
@@ -188,6 +191,7 @@ async function OverviewContent({
         amazonData={amazonBasicMetrics} 
         initialTimeRange={range}
         initialPlatform={selectedPlatformFilter === "GOOGLE" ? "GOOGLE" : selectedPlatformFilter === "AMAZON" ? "AMAZON" : "META"}
+        syncTimeline={syncTimeline}
       />
 
       <div className="grid grid-cols-5 gap-[1px] bg-stone border border-stone mb-7 rounded-md overflow-hidden">

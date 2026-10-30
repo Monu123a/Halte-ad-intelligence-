@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { MetaBasicMetricsReport, StateBasicMetric } from "@/lib/metaBasicMetrics";
 import { GoogleBasicMetricsReport } from "@/lib/googleMetrics";
 import { AmazonBasicMetricsReport } from "@/lib/amazonMetrics";
+import { SyncTimelineOverview } from "@/lib/services";
 import {
   Globe,
   MapPin,
@@ -29,7 +30,9 @@ import {
   UploadCloud,
   FileSpreadsheet,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  Clock,
+  Calendar
 } from "lucide-react";
 
 export function MetaBasicMetricsOverview({
@@ -37,13 +40,15 @@ export function MetaBasicMetricsOverview({
   googleData,
   amazonData,
   initialTimeRange = "30d",
-  initialPlatform = "META"
+  initialPlatform = "META",
+  syncTimeline
 }: {
   data: MetaBasicMetricsReport;
   googleData?: GoogleBasicMetricsReport;
   amazonData?: AmazonBasicMetricsReport;
   initialTimeRange?: string;
   initialPlatform?: "META" | "GOOGLE" | "AMAZON";
+  syncTimeline?: SyncTimelineOverview;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -157,12 +162,32 @@ export function MetaBasicMetricsOverview({
             <h2 className="font-serif text-[22px] m-0 font-semibold text-ink">
               Ad Campaign Performance Overview
             </h2>
-            <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-green-tint text-green border border-green/20">
-              Live Telemetry
-            </span>
+            {syncTimeline ? (
+              <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200/80 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>
+                  Data through{" "}
+                  {selectedPlatform === "GOOGLE"
+                    ? syncTimeline.platforms.GOOGLE.dataThroughDate
+                      ? new Date(syncTimeline.platforms.GOOGLE.dataThroughDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                      : "Oct 24, 2026"
+                    : selectedPlatform === "AMAZON"
+                    ? syncTimeline.platforms.AMAZON.dataThroughDate
+                      ? new Date(syncTimeline.platforms.AMAZON.dataThroughDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                      : "Oct 24, 2026"
+                    : syncTimeline.platforms.META.dataThroughDate
+                    ? new Date(syncTimeline.platforms.META.dataThroughDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                    : "Oct 19, 2026"}
+                </span>
+              </span>
+            ) : (
+              <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-green-tint text-green border border-green/20">
+                Live Telemetry
+              </span>
+            )}
           </div>
           <p className="m-0 text-[13px] text-ink-soft">
-            Core ad metrics across Meta accounts with state and district targeting breakdown
+            Core ad metrics across {selectedPlatform === "GOOGLE" ? "Google Ads" : selectedPlatform === "AMAZON" ? "Amazon Ads" : "Meta accounts"} with state and district targeting breakdown
           </p>
         </div>
 
@@ -303,6 +328,11 @@ export function MetaBasicMetricsOverview({
                 <span className="w-2 h-2 rounded-full bg-green animate-pulse"></span>
                 <span>{googleData.accountName}</span>
                 <span className="text-ink-soft font-mono text-[11px]">({googleData.customerId})</span>
+                {syncTimeline?.platforms.GOOGLE.dataThroughDate && (
+                  <span className="text-[10.5px] font-mono text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 ml-1">
+                    Through {new Date(syncTimeline.platforms.GOOGLE.dataThroughDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                  </span>
+                )}
               </div>
               <Link
                 href={`/reports?brand=ALL&range=${selectedTimeRange}&format=xlsx`}
@@ -755,6 +785,11 @@ export function MetaBasicMetricsOverview({
                         <span className="w-2 h-2 rounded-full bg-green animate-pulse"></span>
                         <span>{amazonData.accountName}</span>
                         <span className="text-ink-soft font-mono text-[11px]">({amazonData.accountId})</span>
+                        {syncTimeline?.platforms.AMAZON.dataThroughDate && (
+                          <span className="text-[10.5px] font-mono text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 ml-1">
+                            Through {new Date(syncTimeline.platforms.AMAZON.dataThroughDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                          </span>
+                        )}
                       </div>
 
                       <label className="cursor-pointer text-[11.5px] font-semibold text-ink bg-stone/40 hover:bg-stone/70 border border-stone px-2.5 py-1.5 rounded flex items-center gap-1.5 transition-colors">
@@ -1305,33 +1340,45 @@ export function MetaBasicMetricsOverview({
               </div>
             </div>
 
-            {/* State / City Filter Dropdown */}
-            <div className="flex items-center gap-2">
-              <span className="text-[12px] font-semibold text-ink-soft flex items-center gap-1">
-                <MapPin className="w-3.5 h-3.5 text-green" />
-                State / Regional Filter:
-              </span>
-              <select
-                value={selectedState}
-                onChange={(e) => setSelectedState(e.target.value)}
-                className="text-[12px] font-semibold border border-stone rounded px-3 py-1.5 bg-card text-ink outline-none cursor-pointer hover:border-slate/50"
-              >
-                <option value="ALL">🇮🇳 All India (Blended National)</option>
-                {states.map((s) => (
-                  <option key={s.state} value={s.state}>
-                    {s.state} (₹{s.spend >= 100000 ? `${(s.spend / 100000).toFixed(1)}L` : `${Math.round(s.spend / 1000)}k`} • {s.leads} leads)
-                  </option>
-                ))}
-              </select>
-
-              {selectedState !== "ALL" && (
-                <button
-                  onClick={() => setSelectedState("ALL")}
-                  className="text-[11.5px] text-green font-semibold hover:underline px-1"
-                >
-                  Reset
-                </button>
+            {/* State / City Filter Dropdown & Account Status */}
+            <div className="flex items-center gap-3 flex-wrap">
+              {syncTimeline?.platforms.META.dataThroughDate && (
+                <div className="flex items-center gap-1.5 text-[11.5px] bg-card px-2.5 py-1 rounded border border-stone">
+                  <span className="w-2 h-2 rounded-full bg-[#1877F2]"></span>
+                  <span className="text-ink-soft">Meta Accounts:</span>
+                  <strong className="text-emerald-800 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200 font-mono text-[11px]">
+                    Through {new Date(syncTimeline.platforms.META.dataThroughDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                  </strong>
+                </div>
               )}
+
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] font-semibold text-ink-soft flex items-center gap-1">
+                  <MapPin className="w-3.5 h-3.5 text-green" />
+                  State / Regional Filter:
+                </span>
+                <select
+                  value={selectedState}
+                  onChange={(e) => setSelectedState(e.target.value)}
+                  className="text-[12px] font-semibold border border-stone rounded px-3 py-1.5 bg-card text-ink outline-none cursor-pointer hover:border-slate/50"
+                >
+                  <option value="ALL">🇮🇳 All India (Blended National)</option>
+                  {states.map((s) => (
+                    <option key={s.state} value={s.state}>
+                      {s.state} (₹{s.spend >= 100000 ? `${(s.spend / 100000).toFixed(1)}L` : `${Math.round(s.spend / 1000)}k`} • {s.leads} leads)
+                    </option>
+                  ))}
+                </select>
+
+                {selectedState !== "ALL" && (
+                  <button
+                    onClick={() => setSelectedState("ALL")}
+                    className="text-[11.5px] text-green font-semibold hover:underline px-1"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 

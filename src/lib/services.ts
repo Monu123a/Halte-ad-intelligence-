@@ -183,6 +183,135 @@ export async function getDashboardRecommendations(
   return result;
 }
 
+export interface PlatformSyncTimelineItem {
+  platform: "META" | "GOOGLE" | "AMAZON";
+  displayName: string;
+  status: string;
+  lastSyncedAt: Date | null;
+  dataThroughDate: Date | null;
+  accounts: Array<{
+    id: string;
+    label: string;
+    accountId?: string;
+    lastSyncedAt: Date | null;
+  }>;
+}
+
+export interface SyncTimelineOverview {
+  overallLastSyncedAt: Date | null;
+  overallDataThroughDate: Date | null;
+  platforms: {
+    META: PlatformSyncTimelineItem;
+    GOOGLE: PlatformSyncTimelineItem;
+    AMAZON: PlatformSyncTimelineItem;
+  };
+}
+
+export async function getSyncTimelineOverview(): Promise<SyncTimelineOverview> {
+  const [connections, metaDaily, googleDaily, amazonDaily] = await Promise.all([
+    prisma.adConnection.findMany({
+      where: { isEnabled: true },
+      select: {
+        id: true,
+        platform: true,
+        label: true,
+        platformAccountId: true,
+        status: true,
+        lastSyncedAt: true
+      }
+    }),
+    prisma.dailyMetric.findFirst({
+      where: { adSet: { campaign: { adConnection: { platform: "META" } } } },
+      orderBy: { date: "desc" },
+      select: { date: true }
+    }),
+    prisma.dailyMetric.findFirst({
+      where: { adSet: { campaign: { adConnection: { platform: "GOOGLE" } } } },
+      orderBy: { date: "desc" },
+      select: { date: true }
+    }),
+    prisma.dailyMetric.findFirst({
+      where: { adSet: { campaign: { adConnection: { platform: "AMAZON" } } } },
+      orderBy: { date: "desc" },
+      select: { date: true }
+    })
+  ]);
+
+  const metaConns = connections.filter(c => c.platform === "META");
+  const googleConns = connections.filter(c => c.platform === "GOOGLE");
+  const amazonConns = connections.filter(c => c.platform === "AMAZON");
+
+  const getLatestConnDate = (conns: typeof connections) => {
+    let latest: Date | null = null;
+    for (const c of conns) {
+      if (c.lastSyncedAt && (!latest || c.lastSyncedAt > latest)) {
+        latest = c.lastSyncedAt;
+      }
+    }
+    return latest;
+  };
+
+  const metaSyncDate = getLatestConnDate(metaConns);
+  const googleSyncDate = getLatestConnDate(googleConns);
+  const amazonSyncDate = getLatestConnDate(amazonConns);
+
+  const allSyncDates = [metaSyncDate, googleSyncDate, amazonSyncDate].filter(Boolean) as Date[];
+  const overallLastSyncedAt = allSyncDates.length > 0
+    ? new Date(Math.max(...allSyncDates.map(d => d.getTime())))
+    : null;
+
+  const allDataDates = [metaDaily?.date, googleDaily?.date, amazonDaily?.date].filter(Boolean) as Date[];
+  const overallDataThroughDate = allDataDates.length > 0
+    ? new Date(Math.max(...allDataDates.map(d => d.getTime())))
+    : null;
+
+  return {
+    overallLastSyncedAt,
+    overallDataThroughDate,
+    platforms: {
+      META: {
+        platform: "META",
+        displayName: "Meta Ads",
+        status: metaConns.some(c => c.status === "CONNECTED") ? "CONNECTED" : "DISCONNECTED",
+        lastSyncedAt: metaSyncDate,
+        dataThroughDate: metaDaily?.date || null,
+        accounts: metaConns.map(c => ({
+          id: c.id,
+          label: c.label || "Meta Ad Account",
+          accountId: c.platformAccountId,
+          lastSyncedAt: c.lastSyncedAt
+        }))
+      },
+      GOOGLE: {
+        platform: "GOOGLE",
+        displayName: "Google Ads",
+        status: googleConns.some(c => c.status === "CONNECTED") ? "CONNECTED" : "DISCONNECTED",
+        lastSyncedAt: googleSyncDate,
+        dataThroughDate: googleDaily?.date || null,
+        accounts: googleConns.map(c => ({
+          id: c.id,
+          label: c.label || "Google Ads Account",
+          accountId: c.platformAccountId,
+          lastSyncedAt: c.lastSyncedAt
+        }))
+      },
+      AMAZON: {
+        platform: "AMAZON",
+        displayName: "Amazon Ads",
+        status: amazonConns.some(c => c.status === "CONNECTED") ? "CONNECTED" : "DISCONNECTED",
+        lastSyncedAt: amazonSyncDate,
+        dataThroughDate: amazonDaily?.date || null,
+        accounts: amazonConns.map(c => ({
+          id: c.id,
+          label: c.label || "Amazon Seller Store",
+          accountId: c.platformAccountId,
+          lastSyncedAt: c.lastSyncedAt
+        }))
+      }
+    }
+  };
+}
+
 export async function getOverviewStats(range: string = "30d", customRange?: { from?: Date; to?: Date }) {
   const cacheKey = customRange?.from 
     ? `stats_custom_${customRange.from.toISOString()}_${customRange.to?.toISOString()}`
