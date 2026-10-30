@@ -165,7 +165,7 @@ export async function runSafeStoreQuery(sql: string): Promise<any[]> {
   const p = getStorePool();
   if (!p) throw new Error("Store database pool is not connected.");
 
-  const clean = sql.trim().replace(/;+$/, "");
+  let clean = sql.trim().replace(/;+$/, "");
   const lower = clean.toLowerCase();
   if (!lower.startsWith("select") && !lower.startsWith("with")) {
     throw new Error("Only read-only SELECT queries are permitted.");
@@ -176,8 +176,19 @@ export async function runSafeStoreQuery(sql: string): Promise<any[]> {
     throw new Error("Mutation queries are blocked for database safety.");
   }
 
+  // Auto-correct common LLM timestamp & column mistakes:
+  // 1. replace order_date or created_at with purchase_date
+  clean = clean.replace(/\border_date\b/gi, "purchase_date");
+  clean = clean.replace(/\bcreated_at\b/gi, "purchase_date");
+
+  // 2. fix timestamp comparison without cast: "purchase_date = 'YYYY-MM-DD'" -> "purchase_date::date = 'YYYY-MM-DD'"
+  clean = clean.replace(/purchase_date\s*=\s*'(\d{4}-\d{2}-\d{2})'/gi, "purchase_date::date = '$1'");
+
+  // 3. fix "DATE(purchase_date) = ..." -> "purchase_date::date = ..."
+  clean = clean.replace(/DATE\(purchase_date\)/gi, "purchase_date::date");
+
   // Ensure query has a limit to prevent memory spikes
-  const cappedSql = lower.includes("limit") ? clean : `${clean} LIMIT 50`;
+  const cappedSql = clean.toLowerCase().includes("limit") ? clean : `${clean} LIMIT 50`;
   const res = await p.query(cappedSql);
   return res.rows;
 }

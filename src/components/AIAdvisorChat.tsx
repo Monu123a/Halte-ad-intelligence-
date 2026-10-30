@@ -99,10 +99,13 @@ I am directly connected to your **Halte Production Store Database** (${totalOrde
     setIsLoading(true);
 
     try {
-      const historyPayload = messages.map((m) => ({
-        role: m.role === "assistant" ? "model" : "user",
-        text: m.content
-      }));
+      const historyPayload = messages
+        .filter((m) => m.id !== "welcome-1")
+        .slice(-6)
+        .map((m) => ({
+          role: m.role === "assistant" ? "model" : "user",
+          text: m.content
+        }));
 
       const res = await fetch("/api/ai/chat", {
         method: "POST",

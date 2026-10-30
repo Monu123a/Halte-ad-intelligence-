@@ -8,6 +8,16 @@ import { getStoreMetricsSummary, runSafeStoreQuery } from "@/lib/halteStoreDb";
 import { getGeminiApiKey } from "@/lib/geminiKey";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+function extractGeminiText(candidate: any): string {
+  if (!candidate?.content?.parts) return "";
+  const textParts = candidate.content.parts
+    .filter((p: any) => typeof p.text === "string" && !p.thought)
+    .map((p: any) => p.text);
+  if (textParts.length > 0) return textParts.join("\n").trim();
+  return candidate.content.parts.map((p: any) => p.text || "").join("").trim();
+}
 
 async function runSafeAdsQuery(sql: string): Promise<any[]> {
   const clean = sql.trim().replace(/;+$/, "");
@@ -66,11 +76,24 @@ export async function POST(req: Request) {
 
     const totalAdSpend30 = (meta30.spend || 0) + (google30.spend || 0) + (amazon30.spend || 0);
 
+    const now = new Date();
+    const todayStr = now.toISOString().split("T")[0];
+
     const systemContext = `You are the Halte Executive AI Chief Marketing Officer & Business Advisor.
 You are fine-tuned specifically for Halte's exact product lines, business models, and Indian market dynamics:
 1. Premium Gardening & Irrigation Tools (Gardena, RollUp Hose Reels, Sprinklers, Combisystem)
 2. Agricultural & Garden Machinery (BKR 52cc Brush Cutters, Tillers, Chainsaws, Snow Chains)
 3. Heavy Duty Tapes & Adhesives (Gorilla Glue, Velcro Brand)
+
+=== CRITICAL SCHEMA & DATE RULES ===
+* CURRENT DATE: ${todayStr} (Year: ${now.getFullYear()})
+* In the Halte store database 'orders' table:
+  - The date column is STRICTLY 'purchase_date' (TIMESTAMP WITH TIME ZONE). NEVER use 'order_date' or 'created_at'.
+  - To query orders for today, ALWAYS write: WHERE purchase_date::date = CURRENT_DATE (or purchase_date::date = '${todayStr}').
+  - Do NOT compare without '::date' (e.g. avoid "purchase_date = '${todayStr}'" because purchase_date contains time).
+  - Revenue formula: SUM(item_price * quantity).
+  - Profit column: 'profit'. Cost price: 'cogs_price'.
+  - State column: 'ship_state'. City column: 'ship_city'. Status: 'order_status'.
 
 You have REAL-TIME LIVE READ ACCESS to all connected databases and marketing systems:
 
@@ -129,13 +152,13 @@ ${(storeData?.recentCustomers || []).slice(0, 3).map((c: any) => `  - ${c.name} 
         functionDeclarations: [
           {
             name: "query_store_database",
-            description: "Executes a safe read-only SELECT query on the Halte Production Store Database. Tables available: 'orders' (id, amazon_order_id, purchase_date, last_updated_date, order_status, fulfillment_channel, sales_channel, sku, asin, item_status, quantity, currency, item_price, item_tax, cogs_price, profit, ship_city, ship_state, shipping_price, ship_postal_code, amazon_fee), 'customers' (id, customer_id, name, phone, email, address, city, state, pincode, total_orders, total_spent, notes, created_at, channel), 'PowerBISales' (Date, Year, Month_Name, BRAND, Item Description, Sku, Category, Ship To City, Ship To State, Invoice Amount, Quantity), 'cogs' (sku, brand, cost_price).",
+            description: "Executes a safe read-only SELECT query on the Halte Production Store Database. Tables available: 'orders' (id, amazon_order_id, purchase_date, last_updated_date, order_status, fulfillment_channel, sales_channel, sku, asin, item_status, quantity, currency, item_price, item_tax, cogs_price, profit, ship_city, ship_state, shipping_price, ship_postal_code, amazon_fee), 'customers' (id, customer_id, name, phone, email, address, city, state, pincode, total_orders, total_spent, notes, created_at, channel), 'PowerBISales' (Date, Year, Month_Name, BRAND, Item Description, Sku, Category, Ship To City, Ship To State, Invoice Amount, Quantity), 'cogs' (sku, brand, cost_price). NOTE: For dates in 'orders', ALWAYS use 'purchase_date::date = CURRENT_DATE' or 'purchase_date::date = \\'YYYY-MM-DD\\''; never use 'order_date'.",
             parameters: {
               type: "OBJECT",
               properties: {
                 sql: {
                   type: "STRING",
-                  description: "Safe read-only SELECT query (e.g. SELECT purchase_date::date, count(*), sum(item_price*quantity) FROM orders WHERE purchase_date >= '2026-10-01' GROUP BY 1 ORDER BY 1)"
+                  description: "Safe read-only SELECT query (e.g. SELECT purchase_date::date, count(*), sum(item_price*quantity) FROM orders WHERE purchase_date::date = CURRENT_DATE GROUP BY 1)"
                 }
               },
               required: ["sql"]
@@ -207,7 +230,7 @@ ${(storeData?.recentCustomers || []).slice(0, 3).map((c: any) => `  - ${c.name} 
     const candidate1 = geminiData1.candidates?.[0]?.content;
     const functionCall = candidate1?.parts?.find((p: any) => p.functionCall)?.functionCall;
 
-    let finalReply = candidate1?.parts?.find((p: any) => p.text)?.text || "";
+    let finalReply = extractGeminiText(geminiData1.candidates?.[0]);
 
     // If Gemini requested database data via Function Calling, execute query and perform Second Turn
     if (functionCall) {
@@ -244,7 +267,10 @@ ${(storeData?.recentCustomers || []).slice(0, 3).map((c: any) => `  - ${c.name} 
 
       // Second Turn: Gemini synthesizes the real database rows into the final answer
       const geminiData2 = await executeGeminiCall(contents, false);
-      finalReply = geminiData2.candidates?.[0]?.content?.parts?.[0]?.text || finalReply;
+      const turn2Text = extractGeminiText(geminiData2.candidates?.[0]);
+      if (turn2Text) {
+        finalReply = turn2Text;
+      }
     }
 
     return NextResponse.json({
