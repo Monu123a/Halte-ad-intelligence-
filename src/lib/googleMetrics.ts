@@ -119,9 +119,16 @@ export async function getGoogleOverviewMetrics(customRange?: { from?: Date; to?:
   const report: Partial<GoogleBasicMetricsReport> = {
     accountName: conn.label || `Google Ads (${conn.platformAccountId})`,
     customerId: conn.platformAccountId,
-    status: conn.status,
+    status: (conn.status === "CONNECTED" || conn.campaigns.length > 0) ? "CONNECTED" : conn.status,
     lastSyncedAt: conn.lastSyncedAt
   };
+
+  // Asynchronously trigger refresh if token is expired so subsequent API requests succeed without lag
+  if (conn.refreshTokenEnc && conn.tokenExpiresAt && conn.tokenExpiresAt <= new Date()) {
+    import("@/lib/sync/googleSync").then(m => m.runGoogleSync(conn.id)).catch(err => {
+      console.warn("[Google Background Refresh]:", err.message);
+    });
+  }
 
   for (const [key, rangeDef] of Object.entries(dateRanges)) {
     const minDate = rangeDef.start;

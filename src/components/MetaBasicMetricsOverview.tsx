@@ -64,6 +64,15 @@ export function MetaBasicMetricsOverview({
   const [isUploadingAmazon, setIsUploadingAmazon] = useState<boolean>(false);
   const [uploadAmazonStatus, setUploadAmazonStatus] = useState<{ success?: boolean; message?: string } | null>(null);
 
+  const isGoogleConnected = Boolean(
+    googleData && (
+      googleData.status === "CONNECTED" ||
+      (googleData.all?.totalCampaignsCount || 0) > 0 ||
+      (googleData.all?.campaigns?.length || 0) > 0 ||
+      (googleData.all?.spend || 0) > 0
+    )
+  );
+
   const [aiStrategy, setAiStrategy] = useState<{
     summary: string;
     blendedRoas: string;
@@ -245,9 +254,9 @@ export function MetaBasicMetricsOverview({
                 : "text-ink-soft hover:text-ink"
             }`}
           >
-            <span className={`w-2 h-2 rounded-full ${googleData?.status === "CONNECTED" ? "bg-[#EA4335]" : "bg-stone-dark"}`}></span>
+            <span className={`w-2 h-2 rounded-full ${isGoogleConnected ? "bg-[#EA4335]" : "bg-stone-dark"}`}></span>
             <span>Google Ads</span>
-            {googleData?.status === "CONNECTED" ? (
+            {isGoogleConnected ? (
               <span className="text-[10px] text-green font-semibold bg-green-tint px-1.5 py-0.2 rounded border border-green/20">Live</span>
             ) : (
               <span className="text-[10px] text-stone-dark font-normal">(Next)</span>
@@ -323,7 +332,7 @@ export function MetaBasicMetricsOverview({
         </div>
       </div>
 
-      {selectedPlatform === "GOOGLE" && googleData?.status === "CONNECTED" ? (
+      {selectedPlatform === "GOOGLE" && isGoogleConnected && googleData ? (
         <div className="pt-5 space-y-6">
           {/* Controls: Time Preset & Account Info */}
           <div className="flex flex-wrap items-center justify-between gap-4 bg-[#FAF9F6] p-3.5 rounded border border-stone">
