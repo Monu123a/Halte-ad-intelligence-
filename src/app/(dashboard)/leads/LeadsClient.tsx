@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Search } from "lucide-react";
 
 import { extractLeadMetadata } from "@/lib/leadMatcher";
 
@@ -50,6 +51,22 @@ export default function LeadsClient({
   const [teamLoading, setTeamLoading] = useState(false);
   const [teamError, setTeamError] = useState("");
   const [teamSuccess, setTeamSuccess] = useState("");
+
+  // Fast searchable modal state for assigning ad sets (avoids 400,000+ DOM nodes)
+  const [adSetModalLead, setAdSetModalLead] = useState<{ id: string; currentAdSetId?: string | null } | null>(null);
+  const [adSetSearchQuery, setAdSetSearchQuery] = useState("");
+
+  const filteredAdSets = useMemo(() => {
+    if (!adSetSearchQuery.trim()) return (availableAdSets || []).slice(0, 60);
+    const q = adSetSearchQuery.toLowerCase();
+    return (availableAdSets || [])
+      .filter((a: any) =>
+        (a.name && a.name.toLowerCase().includes(q)) ||
+        (a.campaign?.name && a.campaign.name.toLowerCase().includes(q)) ||
+        (a.campaign?.brand?.name && a.campaign.brand.name.toLowerCase().includes(q))
+      )
+      .slice(0, 60);
+  }, [availableAdSets, adSetSearchQuery]);
 
   // Sync state when URL/props change
   useEffect(() => {
@@ -826,39 +843,35 @@ export default function LeadsClient({
 
                   {/* Ad Set Selector or Display */}
                   {adName ? (
-                    <span className="text-ink-soft font-medium flex items-center gap-1">
+                    <span className="text-ink-soft font-medium flex items-center gap-1.5">
                       <span>Ad Set: <strong className="text-ink">{adName}</strong></span>
-                      <select
-                        value={lead.adSetId || ""}
-                        onChange={(e) => handleAssignAdSet(lead.id, e.target.value)}
-                        className="ml-1 text-[10.5px] text-stone-dark border border-stone/70 rounded bg-white px-1 py-0.5 cursor-pointer hover:border-ink hover:text-ink max-w-[200px] truncate"
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAdSetModalLead({ id: lead.id, currentAdSetId: lead.adSetId });
+                          setAdSetSearchQuery("");
+                        }}
+                        className="text-[11px] text-stone-dark hover:text-ink underline decoration-dotted font-semibold px-1 py-0.5 rounded hover:bg-stone/30 transition-colors"
                         title="Change Ad Set"
                       >
-                        <option value={lead.adSetId || ""}>Change Ad Set...</option>
-                        {availableAdSets.map(a => (
-                          <option key={a.id} value={a.id}>
-                            {a.campaign?.brand?.name ? `[${a.campaign.brand.name}] ` : ""}{a.name}
-                          </option>
-                        ))}
-                      </select>
+                        Change
+                      </button>
                     </span>
                   ) : (
                     <span className="flex items-center gap-1.5">
                       <span className="text-[10px] font-bold uppercase tracking-wider bg-amber-tint text-amber border border-[#e3d3a8] px-2 py-0.5 rounded">
                         Unassigned Ad Set
                       </span>
-                      <select
-                        value=""
-                        onChange={(e) => handleAssignAdSet(lead.id, e.target.value)}
-                        className="text-[11px] font-semibold text-ink border border-amber/50 rounded bg-amber-tint/40 px-2 py-0.5 cursor-pointer hover:border-amber max-w-[220px]"
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAdSetModalLead({ id: lead.id, currentAdSetId: lead.adSetId });
+                          setAdSetSearchQuery("");
+                        }}
+                        className="text-[11px] font-semibold text-amber hover:text-ink border border-amber/50 rounded bg-amber-tint/40 hover:bg-amber-tint px-2 py-0.5 transition-colors"
                       >
-                        <option value="" disabled>Link to Ad Set...</option>
-                        {availableAdSets.map(a => (
-                          <option key={a.id} value={a.id}>
-                            {a.campaign?.brand?.name ? `[${a.campaign.brand.name}] ` : ""}{a.name}
-                          </option>
-                        ))}
-                      </select>
+                        + Link Ad Set
+                      </button>
                     </span>
                   )}
 
@@ -1009,6 +1022,97 @@ export default function LeadsClient({
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Fast Searchable Ad Set Assignment Modal */}
+      {adSetModalLead && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-card w-full max-w-lg rounded-lg border border-stone shadow-xl p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-stone pb-3">
+              <div>
+                <h3 className="font-serif text-[18px] font-semibold text-ink m-0">Link Lead to Ad Set</h3>
+                <p className="text-[12px] text-ink-soft m-0 mt-0.5">Quickly search through 1,400+ ad sets across Meta, Google &amp; Amazon</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAdSetModalLead(null)}
+                className="text-stone-dark hover:text-ink text-[20px] p-1 leading-none font-bold"
+              >
+                &times;
+              </button>
+            </div>
+
+            <div className="relative">
+              <Search className="w-4 h-4 text-ink-soft absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Search ad set, campaign, or brand (e.g. Gardena, BKR, Shopping)..."
+                value={adSetSearchQuery}
+                onChange={(e) => setAdSetSearchQuery(e.target.value)}
+                className="w-full text-[13px] pl-9 pr-3 py-2 border border-stone rounded bg-[#FAF9F6] focus:outline-none focus:border-ink"
+                autoFocus
+              />
+            </div>
+
+            <div className="max-h-[320px] overflow-y-auto divide-y divide-stone border border-stone rounded bg-white">
+              {filteredAdSets.length === 0 ? (
+                <div className="p-6 text-center text-[12.5px] text-ink-soft">
+                  No matching ad sets found for &ldquo;{adSetSearchQuery}&rdquo;
+                </div>
+              ) : (
+                filteredAdSets.map((a: any) => (
+                  <button
+                    type="button"
+                    key={a.id}
+                    onClick={() => {
+                      handleAssignAdSet(adSetModalLead.id, a.id);
+                      setAdSetModalLead(null);
+                    }}
+                    className={`w-full text-left px-3.5 py-2.5 text-[12px] hover:bg-stone/20 flex items-center justify-between gap-3 transition-colors ${
+                      adSetModalLead.currentAdSetId === a.id ? "bg-green-tint/40 font-semibold" : ""
+                    }`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium text-ink truncate">{a.name}</div>
+                      {a.campaign?.name && (
+                        <div className="text-[11px] text-ink-soft truncate">{a.campaign.name}</div>
+                      )}
+                    </div>
+                    {a.campaign?.brand?.name && (
+                      <span className="shrink-0 text-[10.5px] font-semibold px-2 py-0.5 rounded bg-stone/50 text-ink border border-stone">
+                        {a.campaign.brand.name}
+                      </span>
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+
+            <div className="flex justify-between items-center text-[11.5px] text-ink-soft pt-1 border-t border-stone">
+              <span>Showing {Math.min(60, filteredAdSets.length)} of {(availableAdSets || []).length} ad sets</span>
+              <div className="flex gap-2">
+                {adSetModalLead.currentAdSetId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleAssignAdSet(adSetModalLead.id, "");
+                      setAdSetModalLead(null);
+                    }}
+                    className="px-3 py-1.5 text-rust hover:bg-rust-tint rounded font-medium transition-colors"
+                  >
+                    Unlink Ad Set
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setAdSetModalLead(null)}
+                  className="px-3 py-1.5 bg-stone/40 hover:bg-stone rounded text-ink font-semibold transition-colors"
+                >
+                  Close
+                </button>
               </div>
             </div>
           </div>

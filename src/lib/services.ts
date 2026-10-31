@@ -179,7 +179,7 @@ export async function getDashboardRecommendations(
     }).filter(s => s.brandId !== "unmapped");
 
   const result = generateRecommendations(stats, lookup, currentMonth);
-  cacheRecommendations.set(cacheKey, { data: result, expiresAt: now + 60000 });
+  cacheRecommendations.set(cacheKey, { data: result, expiresAt: now + 300000 });
   return result;
 }
 
@@ -427,7 +427,7 @@ export async function getOverviewStats(range: string = "30d", customRange?: { fr
     messagingAdSetIds: msgAdSetIdsArray
   };
 
-  cacheOverviewStats = { data: result, expiresAt: now + 60000 };
+  cacheOverviewStats = { data: result, expiresAt: now + 300000 };
   return result;
 }
 

@@ -51,19 +51,35 @@ const VERIFIED_REACH_MAP = {
   "7d": 1420200
 };
 
+// 5-minute memory cache to prevent heavy round trips
+let metaMetricsCache: { data: MetaBasicMetricsReport; expiresAt: number } | null = null;
+
+export function invalidateMetaMetricsCache() {
+  metaMetricsCache = null;
+}
+
 export async function getMetaOverviewMetrics(customRange?: { from?: Date; to?: Date }): Promise<MetaBasicMetricsReport> {
-  const metaConn = await prisma.adConnection.findFirst({
-    where: { platform: "META" },
-    orderBy: { lastSyncedAt: "desc" },
-    select: { lastSyncedAt: true }
-  });
+  const now = Date.now();
+  if (!customRange?.from && metaMetricsCache && now < metaMetricsCache.expiresAt) {
+    return metaMetricsCache.data;
+  }
+
+  const [metaConn, allRows] = await Promise.all([
+    prisma.adConnection.findFirst({
+      where: { platform: "META" },
+      orderBy: { lastSyncedAt: "desc" },
+      select: { lastSyncedAt: true }
+    }),
+    prisma.geoMetric.findMany()
+  ]);
 
   const report: Partial<MetaBasicMetricsReport> = {
     lastSyncedAt: metaConn?.lastSyncedAt || null
   };
 
   for (const [key, date] of Object.entries(PRESET_DATES) as Array<[keyof typeof PRESET_DATES, Date]>) {
-    const rows = await prisma.geoMetric.findMany({ where: { date } });
+    const dateTime = date.getTime();
+    const rows = allRows.filter(r => r.date.getTime() === dateTime);
     let totalImp = 0;
     let totalClicks = 0;
     let totalSpend = 0;
@@ -176,5 +192,9 @@ export async function getMetaOverviewMetrics(customRange?: { from?: Date; to?: D
     };
   }
 
-  return report as MetaBasicMetricsReport;
+  const finalReport = report as MetaBasicMetricsReport;
+  if (!customRange?.from) {
+    metaMetricsCache = { data: finalReport, expiresAt: Date.now() + 300000 };
+  }
+  return finalReport;
 }

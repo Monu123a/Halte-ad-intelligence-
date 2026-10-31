@@ -5,6 +5,30 @@ import { getSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
+let cachedAdSets: { data: any[]; expiresAt: number } | null = null;
+
+async function getCachedAdSets() {
+  const now = Date.now();
+  if (cachedAdSets && now < cachedAdSets.expiresAt) {
+    return cachedAdSets.data;
+  }
+  const adSets = await prisma.adSet.findMany({
+    select: {
+      id: true,
+      name: true,
+      campaign: {
+        select: {
+          name: true,
+          brand: { select: { name: true } }
+        }
+      }
+    },
+    orderBy: { name: "asc" }
+  });
+  cachedAdSets = { data: adSets, expiresAt: now + 600000 }; // 10 minutes cache
+  return adSets;
+}
+
 export default async function LeadsPage({ searchParams }: { searchParams: { tag?: string, q?: string } }) {
   const currentTag = searchParams.tag || "UNTAGGED";
   const query = searchParams.q || "";
@@ -14,19 +38,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: { tag?
   
   const [leads, adSets, users] = await Promise.all([
     getLeadsData(currentTag, query),
-    prisma.adSet.findMany({
-      select: {
-        id: true,
-        name: true,
-        campaign: {
-          select: {
-            name: true,
-            brand: { select: { name: true } }
-          }
-        }
-      },
-      orderBy: { name: "asc" }
-    }),
+    getCachedAdSets(),
     isAdmin
       ? prisma.user.findMany({
           where: { role: { notIn: ["ADMIN", "MASTER"] } },

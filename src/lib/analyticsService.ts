@@ -130,12 +130,27 @@ export async function getWebsiteAnalyticsData(options: {
     whereClause.brand = { equals: brandFilter, mode: "insensitive" };
   }
 
+  const analyticsSelect = {
+    sessionId: true,
+    visitorId: true,
+    timeSpentSec: true,
+    maxScrollPct: true,
+    clicksCount: true,
+    brand: true,
+    sku: true,
+    pagePath: true,
+    pageTitle: true,
+    referrer: true,
+    deviceType: true,
+    createdAt: true
+  };
+
   let rows = await prisma.websiteAnalytics.findMany({
     where: whereClause,
     orderBy: { createdAt: "desc" },
+    select: analyticsSelect,
     take: 35000,
   });
-
 
   // Fallback if date range is narrower than historical records
   if (rows.length === 0 && days < 3650) {
@@ -146,6 +161,7 @@ export async function getWebsiteAnalyticsData(options: {
     rows = await prisma.websiteAnalytics.findMany({
       where: fallbackWhere,
       orderBy: { createdAt: "desc" },
+      select: analyticsSelect,
       take: 35000,
     });
   }
@@ -484,7 +500,7 @@ export async function getWebsiteAnalyticsData(options: {
     totalPagesCount,
   };
 
-  analyticsDataCache.set(cacheKey, { data: finalResult, expiresAt: now + 60000 });
+  analyticsDataCache.set(cacheKey, { data: finalResult, expiresAt: now + 300000 });
   return finalResult;
 }
 
