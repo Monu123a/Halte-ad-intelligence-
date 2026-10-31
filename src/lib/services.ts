@@ -6,12 +6,14 @@ const cacheRecommendations = new Map<string, { data: any; expiresAt: number }>()
 let cacheOverviewStats: { data: any; expiresAt: number } | null = null;
 const cacheLeads = new Map<string, { data: any; expiresAt: number }>();
 let cacheSyncTimeline: { data: SyncTimelineOverview; expiresAt: number } | null = null;
+const cacheAbandonedCarts = new Map<string, { data: any; expiresAt: number }>();
 
 export function invalidateServicesCache() {
   cacheRecommendations.clear();
   cacheOverviewStats = null;
   cacheLeads.clear();
   cacheSyncTimeline = null;
+  cacheAbandonedCarts.clear();
 }
 
 export async function getLeadsData(currentTag: string = "UNTAGGED", query: string = "") {
@@ -81,7 +83,7 @@ export async function getLeadsData(currentTag: string = "UNTAGGED", query: strin
   }
   const uniqueLeads = Array.from(uniqueMap.values());
 
-  cacheLeads.set(cacheKey, { data: uniqueLeads, expiresAt: now + 30000 });
+  cacheLeads.set(cacheKey, { data: uniqueLeads, expiresAt: now + 300000 }); // 5 min cache
   return uniqueLeads;
 }
 
@@ -448,6 +450,13 @@ export async function getAbandonedCartsData(options: {
 } = {}) {
   const { status = "ALL", search = "", range = "30d" } = options;
 
+  const cacheKey = `${status}_${search.trim().toLowerCase()}_${range}`;
+  const now = Date.now();
+  const cached = cacheAbandonedCarts.get(cacheKey);
+  if (cached && now < cached.expiresAt) {
+    return cached.data;
+  }
+
   let dateFilter: any = {};
   if (range === "7d") {
     dateFilter = { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) };
@@ -524,7 +533,7 @@ export async function getAbandonedCartsData(options: {
     remarks: Array.isArray(c.remarks) ? c.remarks : [],
   }));
 
-  return {
+  const result = {
     carts,
     summary: {
       totalCount: allCartsForSummary.length,
@@ -536,5 +545,8 @@ export async function getAbandonedCartsData(options: {
       recoveryRate,
     },
   };
+
+  cacheAbandonedCarts.set(cacheKey, { data: result, expiresAt: now + 300000 }); // 5 min cache
+  return result;
 }
 

@@ -8,6 +8,22 @@ import { TeamManagement } from "@/components/TeamManagement";
 
 export const dynamic = "force-dynamic";
 
+let cachedConnectionsData: {
+  data: {
+    connections: any[];
+    unmapped: any[];
+    brands: any[];
+    users: any[];
+    storeStats: any;
+    connStatsMap: Record<string, { count: number; spend: number }>;
+  };
+  expiresAt: number;
+} | null = null;
+
+function invalidateConnectionsCache() {
+  cachedConnectionsData = null;
+}
+
 export default async function ConnectionsPage({
   searchParams
 }: {
@@ -19,20 +35,64 @@ export default async function ConnectionsPage({
   }
 
   const isAdmin = session?.role === "ADMIN" || session?.role === "MASTER";
+  const now = Date.now();
 
-  const [connections, unmapped, brands, users, storeStats] = await Promise.all([
-    prisma.adConnection.findMany(),
-    prisma.campaign.findMany({ where: { brandPageId: null } }),
-    prisma.brand.findMany(),
-    isAdmin 
-      ? prisma.user.findMany({ 
-          where: { role: { notIn: ["ADMIN", "MASTER"] } },
-          select: { id: true, email: true, role: true, createdAt: true }, 
-          orderBy: { createdAt: "desc" } 
-        })
-      : Promise.resolve([]),
-    getStoreMetricsSummary()
-  ]);
+  let connectionsData = cachedConnectionsData && now < cachedConnectionsData.expiresAt
+    ? cachedConnectionsData.data
+    : null;
+
+  if (!connectionsData) {
+    const date12MonthsAgo = new Date();
+    date12MonthsAgo.setMonth(date12MonthsAgo.getMonth() - 12);
+
+    const [connections, unmapped, brands, users, storeStats, statsRows] = await Promise.all([
+      prisma.adConnection.findMany({ orderBy: { platform: "asc" } }),
+      prisma.campaign.findMany({ 
+        where: { brandPageId: null },
+        select: { id: true, name: true, pageId: true }
+      }),
+      prisma.brand.findMany(),
+      isAdmin 
+        ? prisma.user.findMany({ 
+            where: { role: { notIn: ["ADMIN", "MASTER"] } },
+            select: { id: true, email: true, role: true, createdAt: true }, 
+            orderBy: { createdAt: "desc" } 
+          })
+        : Promise.resolve([]),
+      getStoreMetricsSummary(),
+      prisma.$queryRaw<Array<{ adConnectionId: string; campaign_count: bigint; total_spend: any }>>`
+        SELECT 
+          c."adConnectionId",
+          COUNT(DISTINCT c.id) as campaign_count,
+          COALESCE(SUM(dm.spend), 0) as total_spend
+        FROM "Campaign" c
+        LEFT JOIN "AdSet" a ON a."campaignId" = c.id
+        LEFT JOIN "DailyMetric" dm ON dm."adSetId" = a.id AND dm.date >= ${date12MonthsAgo}
+        GROUP BY c."adConnectionId";
+      `
+    ]);
+
+    const connStatsMap: Record<string, { count: number; spend: number }> = {};
+    for (const r of statsRows) {
+      connStatsMap[r.adConnectionId] = {
+        count: Number(r.campaign_count),
+        spend: Math.round(Number(r.total_spend || 0))
+      };
+    }
+
+    connectionsData = {
+      connections,
+      unmapped,
+      brands,
+      users,
+      storeStats,
+      connStatsMap
+    };
+
+    cachedConnectionsData = { data: connectionsData, expiresAt: now + 300000 }; // 5 min cache
+  }
+
+  const { connections, unmapped, brands, users, storeStats, connStatsMap } = connectionsData;
 
   // List of valid products for campaign mapping & seasonal rules
   const products = [
@@ -147,18 +207,10 @@ export default async function ConnectionsPage({
             No connections established yet.
           </div>
         )}
-        {connections.map(async (conn) => {
-          const count = await prisma.campaign.count({ where: { adConnectionId: conn.id } });
-          const date12MonthsAgo = new Date();
-          date12MonthsAgo.setMonth(date12MonthsAgo.getMonth() - 12);
-          const metrics = await prisma.dailyMetric.aggregate({
-            where: { 
-              date: { gte: date12MonthsAgo },
-              adSet: { campaign: { adConnectionId: conn.id } }
-            },
-            _sum: { spend: true }
-          });
-          const spend = Number(metrics._sum.spend || 0);
+        {connections.map((conn) => {
+          const stats = connStatsMap[conn.id] || { count: 0, spend: 0 };
+          const count = stats.count;
+          const spend = stats.spend;
           
           let displayStatus = "Not connected yet";
           let dotColor = "bg-amber";
@@ -179,7 +231,11 @@ export default async function ConnectionsPage({
             dotColor = "bg-rust";
           }
           
-          const reconnectUrl = conn.platform === "GOOGLE" ? "/api/auth/google/connect" : "/api/auth/meta/connect";
+          const reconnectUrl = conn.platform === "GOOGLE" 
+            ? "/api/auth/google/connect" 
+            : conn.platform === "AMAZON"
+            ? "/api/auth/amazon/connect"
+            : "/api/auth/meta/connect";
 
           return (
             <div key={conn.id} className="bg-card p-6 flex justify-between items-center">

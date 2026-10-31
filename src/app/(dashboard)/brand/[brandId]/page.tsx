@@ -73,7 +73,7 @@ async function getBrandData(brandName: string, currentMonthStr: string): Promise
   }
 
   const result = { currentBrand, isSeasonal, totalSpend, spendByRegion };
-  brandReportCache.set(cacheKey, { data: result, expiresAt: now + 60000 });
+  brandReportCache.set(cacheKey, { data: result, expiresAt: now + 300000 }); // 5 min cache
   return result;
 }
 
