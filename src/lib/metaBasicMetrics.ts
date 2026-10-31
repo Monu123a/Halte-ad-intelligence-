@@ -194,7 +194,7 @@ export async function getMetaOverviewMetrics(customRange?: { from?: Date; to?: D
 
   const finalReport = report as MetaBasicMetricsReport;
   if (!customRange?.from) {
-    metaMetricsCache = { data: finalReport, expiresAt: Date.now() + 300000 };
+    metaMetricsCache = { data: finalReport, expiresAt: Date.now() + 600000 };
   }
   return finalReport;
 }

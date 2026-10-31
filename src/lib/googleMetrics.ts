@@ -123,13 +123,6 @@ export async function getGoogleOverviewMetrics(customRange?: { from?: Date; to?:
     lastSyncedAt: conn.lastSyncedAt
   };
 
-  // Asynchronously trigger refresh if token is expired so subsequent API requests succeed without lag
-  if (conn.refreshTokenEnc && conn.tokenExpiresAt && conn.tokenExpiresAt <= new Date()) {
-    import("@/lib/sync/googleSync").then(m => m.runGoogleSync(conn.id)).catch(err => {
-      console.warn("[Google Background Refresh]:", err.message);
-    });
-  }
-
   for (const [key, rangeDef] of Object.entries(dateRanges)) {
     const minDate = rangeDef.start;
     const maxDate = rangeDef.end;
@@ -243,7 +236,7 @@ export async function getGoogleOverviewMetrics(customRange?: { from?: Date; to?:
 
   const finalReport = report as GoogleBasicMetricsReport;
   if (!customRange?.from) {
-    googleMetricsCache = { data: finalReport, expiresAt: Date.now() + 300000 };
+    googleMetricsCache = { data: finalReport, expiresAt: Date.now() + 600000 };
   }
   return finalReport;
 }

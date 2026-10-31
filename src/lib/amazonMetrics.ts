@@ -220,7 +220,7 @@ export async function getAmazonOverviewMetrics(customRange?: { from?: Date; to?:
 
   const finalReport = report as AmazonBasicMetricsReport;
   if (!customRange?.from) {
-    amazonMetricsCache = { data: finalReport, expiresAt: Date.now() + 300000 };
+    amazonMetricsCache = { data: finalReport, expiresAt: Date.now() + 600000 };
   }
   return finalReport;
 }

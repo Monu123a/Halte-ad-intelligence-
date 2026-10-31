@@ -3,14 +3,14 @@ import { generateRecommendations, AdSetStats, SeasonalLookup, isMessagingAdSet }
 
 // In-Memory Cache to make page switching instant
 const cacheRecommendations = new Map<string, { data: any; expiresAt: number }>();
-let cacheOverviewStats: { data: any; expiresAt: number } | null = null;
+const cacheOverviewStats = new Map<string, { data: any; expiresAt: number }>();
 const cacheLeads = new Map<string, { data: any; expiresAt: number }>();
 let cacheSyncTimeline: { data: SyncTimelineOverview; expiresAt: number } | null = null;
 const cacheAbandonedCarts = new Map<string, { data: any; expiresAt: number }>();
 
 export function invalidateServicesCache() {
   cacheRecommendations.clear();
-  cacheOverviewStats = null;
+  cacheOverviewStats.clear();
   cacheLeads.clear();
   cacheSyncTimeline = null;
   cacheAbandonedCarts.clear();
@@ -100,50 +100,55 @@ export async function getDashboardRecommendations(
     return cached.data;
   }
 
-  let dateFilter: any = undefined;
-  if (customRange?.from) {
-    dateFilter = {
-      gte: customRange.from,
-      ...(customRange.to ? { lte: new Date(new Date(customRange.to).setHours(23, 59, 59, 999)) } : {})
-    };
-  } else if (range === "7d") {
-    dateFilter = { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) };
-  } else if (range === "30d") {
-    dateFilter = { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) };
-  } else if (range === "90d") {
-    dateFilter = { gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) };
-  }
+  const cutoff = customRange?.from 
+    ? customRange.from 
+    : range === "7d" 
+    ? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+    : range === "90d"
+    ? new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
+    : range === "all"
+    ? new Date("2020-01-01T00:00:00.000Z")
+    : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-  const [adSets, seasonalRules] = await Promise.all([
-    prisma.adSet.findMany({
-      select: {
-        id: true,
-        dailyMetrics: {
-          where: dateFilter ? { date: dateFilter } : undefined,
-          select: { spend: true, clicks: true }
-        },
-        leads: {
-          where: {
-            tag: { not: "UNTAGGED" },
-            ...(dateFilter ? { createdAt: dateFilter } : {})
-          },
-          select: { tag: true }
-        },
-        campaign: {
-          select: {
-            products: true,
-            region: true,
-            objective: true,
-            adConnection: {
-              select: { platform: true }
-            },
-            brand: {
-              select: { id: true, isSeasonal: true }
-            }
-          }
-        }
-      }
-    }),
+  const endCutoff = customRange?.to
+    ? new Date(new Date(customRange.to).setHours(23, 59, 59, 999))
+    : new Date();
+
+  const [rawRows, seasonalRules] = await Promise.all([
+    prisma.$queryRaw<any[]>`
+      SELECT 
+        a.id as "adSetId",
+        c."products",
+        c."region",
+        c."objective",
+        conn."platform",
+        b.id as "brandId",
+        b."isSeasonal" as "isSeasonalBrand",
+        COALESCE(m.spend, 0)::float as spend,
+        COALESCE(m.clicks, 0)::int as clicks,
+        COALESCE(l.genuine, 0)::int as "genuineLeads",
+        COALESCE(l.converted, 0)::int as "convertedLeads",
+        COALESCE(l.total, 0)::int as "totalTaggedLeads"
+      FROM "AdSet" a
+      JOIN "Campaign" c ON a."campaignId" = c.id
+      JOIN "Brand" b ON c."brandPageId" = b."pageId"
+      JOIN "AdConnection" conn ON c."adConnectionId" = conn.id
+      LEFT JOIN (
+        SELECT "adSetId", SUM(spend) as spend, SUM(clicks) as clicks
+        FROM "DailyMetric"
+        WHERE date >= ${cutoff} AND date <= ${endCutoff}
+        GROUP BY "adSetId"
+      ) m ON m."adSetId" = a.id
+      LEFT JOIN (
+        SELECT "adSetId",
+          COUNT(*) FILTER (WHERE tag IN ('GENUINE', 'CONVERTED')) as genuine,
+          COUNT(*) FILTER (WHERE tag = 'CONVERTED') as converted,
+          COUNT(*) as total
+        FROM "Lead"
+        WHERE tag != 'UNTAGGED' AND "createdAt" >= ${cutoff} AND "createdAt" <= ${endCutoff}
+        GROUP BY "adSetId"
+      ) l ON l."adSetId" = a.id;
+    `,
     prisma.seasonalRule.findMany()
   ]);
 
@@ -157,33 +162,23 @@ export async function getDashboardRecommendations(
 
   const currentMonth = new Date().getMonth() + 1;
 
-  const stats: AdSetStats[] = adSets
-    .filter(a => a.campaign?.brand?.id)
-    .map((adSet) => {
-      const spend = adSet.dailyMetrics.reduce((acc, curr) => acc + Number(curr.spend), 0);
-      const clicks = adSet.dailyMetrics.reduce((acc, curr) => acc + curr.clicks, 0);
-      const genuineLeads = adSet.leads.filter(l => l.tag === "GENUINE" || l.tag === "CONVERTED").length;
-      const convertedLeads = adSet.leads.filter(l => l.tag === "CONVERTED").length;
-      const totalTaggedLeads = adSet.leads.length;
-
-      return {
-        adSetId: adSet.id,
-        spend,
-        clicks,
-        genuineLeads,
-        convertedLeads,
-        totalTaggedLeads,
-        brandId: adSet.campaign?.brand?.id || "unmapped",
-        isSeasonalBrand: adSet.campaign?.brand?.isSeasonal || false,
-        products: adSet.campaign?.products || [],
-        region: adSet.campaign?.region || undefined,
-        objective: adSet.campaign?.objective || undefined,
-        platform: adSet.campaign?.adConnection?.platform || "META"
-      };
-    }).filter(s => s.brandId !== "unmapped");
+  const stats: AdSetStats[] = rawRows.map((r) => ({
+    adSetId: r.adSetId,
+    spend: Number(r.spend || 0),
+    clicks: Number(r.clicks || 0),
+    genuineLeads: Number(r.genuineLeads || 0),
+    convertedLeads: Number(r.convertedLeads || 0),
+    totalTaggedLeads: Number(r.totalTaggedLeads || 0),
+    brandId: r.brandId || "unmapped",
+    isSeasonalBrand: Boolean(r.isSeasonalBrand),
+    products: Array.isArray(r.products) ? r.products : [],
+    region: r.region || undefined,
+    objective: r.objective || undefined,
+    platform: r.platform || "META"
+  }));
 
   const result = generateRecommendations(stats, lookup, currentMonth);
-  cacheRecommendations.set(cacheKey, { data: result, expiresAt: now + 300000 });
+  cacheRecommendations.set(cacheKey, { data: result, expiresAt: now + 600000 });
   return result;
 }
 
@@ -329,8 +324,9 @@ export async function getOverviewStats(range: string = "30d", customRange?: { fr
     ? `stats_custom_${customRange.from.toISOString()}_${customRange.to?.toISOString()}`
     : `stats_${range}`;
   const now = Date.now();
-  if (cacheOverviewStats && now < cacheOverviewStats.expiresAt && range === "30d" && !customRange?.from) {
-    return cacheOverviewStats.data;
+  const cached = cacheOverviewStats.get(cacheKey);
+  if (cached && now < cached.expiresAt) {
+    return cached.data;
   }
 
   let dateFilter: any = undefined;
@@ -391,39 +387,36 @@ export async function getOverviewStats(range: string = "30d", customRange?: { fr
 
   const msgAdSetIdsArray = Array.from(messagingAdSetIds);
 
-  // Run lead counts and sync check in parallel
-  const [genuineLeadsCount, otherGenuineLeadsCount, spamLeadsCount, totalTaggedCount, latestSync] = await Promise.all([
-    prisma.lead.count({ 
-      where: { 
-        tag: { in: ["GENUINE", "CONVERTED"] },
-        adSetId: { in: msgAdSetIdsArray },
-        ...(dateFilter ? { createdAt: dateFilter } : {})
-      } 
-    }),
-    prisma.lead.count({
+  // Single fast query for all tagged leads instead of 4 separate table scans
+  const [taggedLeads, latestSync] = await Promise.all([
+    prisma.lead.findMany({
       where: {
-        tag: { in: ["GENUINE", "CONVERTED"] },
-        adSetId: { notIn: msgAdSetIdsArray },
-        ...(dateFilter ? { createdAt: dateFilter } : {})
-      }
-    }),
-    prisma.lead.count({ 
-      where: { 
-        tag: "SPAM",
-        ...(dateFilter ? { createdAt: dateFilter } : {})
-      } 
-    }),
-    prisma.lead.count({ 
-      where: { 
         tag: { not: "UNTAGGED" },
         ...(dateFilter ? { createdAt: dateFilter } : {})
-      } 
+      },
+      select: { tag: true, adSetId: true }
     }),
     prisma.syncLog.findFirst({
       where: { status: "success" },
       orderBy: { finishedAt: "desc" }
     })
   ]);
+
+  let genuineLeadsCount = 0;
+  let otherGenuineLeadsCount = 0;
+  let spamLeadsCount = 0;
+  const totalTaggedCount = taggedLeads.length;
+
+  for (const l of taggedLeads) {
+    if (l.tag === "SPAM") spamLeadsCount++;
+    if (l.tag === "GENUINE" || l.tag === "CONVERTED") {
+      if (l.adSetId && messagingAdSetIds.has(l.adSetId)) {
+        genuineLeadsCount++;
+      } else {
+        otherGenuineLeadsCount++;
+      }
+    }
+  }
 
   const cpgl = genuineLeadsCount > 0 ? (messagingSpend / genuineLeadsCount).toFixed(0) : 0;
   const spamRate = totalTaggedCount > 0 ? Math.round((spamLeadsCount / totalTaggedCount) * 100) : 0;
@@ -439,7 +432,7 @@ export async function getOverviewStats(range: string = "30d", customRange?: { fr
     messagingAdSetIds: msgAdSetIdsArray
   };
 
-  cacheOverviewStats = { data: result, expiresAt: now + 300000 };
+  cacheOverviewStats.set(cacheKey, { data: result, expiresAt: now + 600000 });
   return result;
 }
 

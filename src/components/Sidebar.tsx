@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 export function Sidebar({ user }: { user?: { email: string; role: string } | null }) {
   const pathname = usePathname();
+  const router = useRouter();
 
   // If we are on the login page, don't show the sidebar
   if (pathname === "/login") return null;
@@ -69,6 +70,11 @@ export function Sidebar({ user }: { user?: { email: string; role: string } | nul
                 key={item.href}
                 href={item.href}
                 prefetch={false}
+                onMouseEnter={() => {
+                  try {
+                    router.prefetch(item.href);
+                  } catch {}
+                }}
                 className={`flex items-center justify-between text-[14px] py-3 px-1 cursor-pointer border-l-2 transition-all ${
                   isActive
                     ? "text-white font-semibold border-white pl-[14px]"

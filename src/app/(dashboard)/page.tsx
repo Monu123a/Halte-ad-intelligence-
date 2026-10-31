@@ -1,5 +1,5 @@
 import { getDashboardRecommendations, getOverviewStats, getSyncTimelineOverview } from "@/lib/services";
-import { getWebsiteAnalyticsData, formatDuration } from "@/lib/analyticsService";
+import { getWebsiteAnalyticsSummary, formatDuration } from "@/lib/analyticsService";
 import { getMetaOverviewMetrics } from "@/lib/metaBasicMetrics";
 import { getGoogleOverviewMetrics } from "@/lib/googleMetrics";
 import { getAmazonOverviewMetrics } from "@/lib/amazonMetrics";
@@ -45,10 +45,10 @@ async function OverviewContent({
     ? { from: new Date(from), to: to ? new Date(to) : undefined }
     : undefined;
 
-  const [recommendationsRaw, stats, { overview: webOverview }, brands, metaBasicMetrics, googleBasicMetrics, amazonBasicMetrics, syncTimeline] = await Promise.all([
+  const [recommendationsRaw, stats, webOverview, brands, metaBasicMetrics, googleBasicMetrics, amazonBasicMetrics, syncTimeline] = await Promise.all([
     getDashboardRecommendations(range, customRange),
     getOverviewStats(range, customRange),
-    getWebsiteAnalyticsData(
+    getWebsiteAnalyticsSummary(
       customRange
         ? { from: customRange.from, to: customRange.to }
         : { days: range === "7d" ? 7 : range === "90d" ? 90 : range === "all" ? 180 : 30 }
