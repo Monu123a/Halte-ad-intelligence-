@@ -4,7 +4,7 @@ import { GoogleAdsConnector } from "@/lib/connector/google";
 
 export async function GET(req: Request) {
   const session = await getSession();
-  if (!session || session.role !== "ADMIN") {
+  if (!session || (session.role !== "ADMIN" && session.role !== "MASTER")) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 

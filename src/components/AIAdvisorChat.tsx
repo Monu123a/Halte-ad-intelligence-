@@ -288,6 +288,7 @@ I am directly connected to your **Halte Production Store Database** (${totalOrde
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: textToSend,
+          sessionId: currentSessionId,
           history: historyPayload
         })
       });

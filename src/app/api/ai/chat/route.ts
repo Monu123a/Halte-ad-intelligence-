@@ -6,6 +6,7 @@ import { getAmazonOverviewMetrics } from "@/lib/amazonMetrics";
 import { getStoreMetricsSummary, runSafeStoreQuery } from "@/lib/halteStoreDb";
 
 import { getGeminiApiKey } from "@/lib/geminiKey";
+import { getSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -57,6 +58,49 @@ export async function POST(req: Request) {
 
     if (!userMessage) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
+    }
+
+    const userSession = await getSession();
+    const userId = userSession?.id;
+    const clientSessionId = body.sessionId;
+    let dbSessionId = clientSessionId;
+
+    if (userId) {
+      try {
+        if (dbSessionId) {
+          const existing = await prisma.aIChatSession.findUnique({ where: { id: dbSessionId } });
+          if (!existing) {
+            const created = await prisma.aIChatSession.create({
+              data: {
+                id: dbSessionId,
+                userId,
+                title: userMessage.length > 55 ? userMessage.substring(0, 52) + "..." : userMessage
+              }
+            });
+            dbSessionId = created.id;
+          }
+        } else {
+          const created = await prisma.aIChatSession.create({
+            data: {
+              userId,
+              title: userMessage.length > 55 ? userMessage.substring(0, 52) + "..." : userMessage
+            }
+          });
+          dbSessionId = created.id;
+        }
+
+        // Save user message to database
+        await prisma.aIChatMessage.create({
+          data: {
+            sessionId: dbSessionId,
+            role: "user",
+            content: userMessage,
+            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+          }
+        });
+      } catch (dbErr) {
+        console.warn("[AIChat DB save warning]:", dbErr);
+      }
     }
 
     const apiKey = getGeminiApiKey();
@@ -303,9 +347,30 @@ ${(storeData?.recentCustomers || []).slice(0, 3).map((c: any) => `  - ${c.name} 
       finalReply = `I reviewed your live telemetry and store database (${storeData?.totalOrders?.toLocaleString() || "29,487"} orders). Could you clarify which specific metrics, products, or channels you would like to analyze?`;
     }
 
+    // Save assistant response to database session
+    if (userId && dbSessionId && finalReply) {
+      try {
+        await prisma.aIChatMessage.create({
+          data: {
+            sessionId: dbSessionId,
+            role: "assistant",
+            content: finalReply,
+            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+          }
+        });
+        await prisma.aIChatSession.update({
+          where: { id: dbSessionId },
+          data: { updatedAt: new Date() }
+        });
+      } catch (saveErr) {
+        console.warn("[AIChat assistant message save warning]:", saveErr);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       reply: finalReply,
+      sessionId: dbSessionId,
       timestamp: new Date().toISOString()
     });
   } catch (error: any) {

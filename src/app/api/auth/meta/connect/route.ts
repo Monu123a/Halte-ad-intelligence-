@@ -5,7 +5,7 @@ import { MetaAdsConnector } from "@/lib/connector/meta";
 export async function GET(req: Request) {
   const session = await getSession();
   
-  if (!session || session.role !== "ADMIN") {
+  if (!session || (session.role !== "ADMIN" && session.role !== "MASTER")) {
     return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 });
   }
 

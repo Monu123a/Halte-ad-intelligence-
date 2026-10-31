@@ -7,8 +7,16 @@ const JWT_SECRET = process.env.JWT_SECRET || "fallback_secret";
 export type SessionUser = {
   id: string;
   email: string;
-  role: "ADMIN" | "ANALYST" | "LEAD_TAGGER";
+  role: "MASTER" | "ADMIN" | "ANALYST" | "LEAD_TAGGER";
 };
+
+export function isMaster(user?: SessionUser | null): boolean {
+  return user?.role === "MASTER";
+}
+
+export function isAdmin(user?: SessionUser | null): boolean {
+  return user?.role === "ADMIN" || user?.role === "MASTER";
+}
 
 export async function getSession(): Promise<SessionUser | null> {
   const token = cookies().get("session")?.value;

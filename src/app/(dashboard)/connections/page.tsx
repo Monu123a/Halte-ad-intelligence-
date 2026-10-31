@@ -18,7 +18,7 @@ export default async function ConnectionsPage({
     redirect("/leads");
   }
 
-  const isAdmin = session?.role === "ADMIN";
+  const isAdmin = session?.role === "ADMIN" || session?.role === "MASTER";
 
   const [connections, unmapped, brands, users, storeStats] = await Promise.all([
     prisma.adConnection.findMany(),
@@ -26,6 +26,7 @@ export default async function ConnectionsPage({
     prisma.brand.findMany(),
     isAdmin 
       ? prisma.user.findMany({ 
+          where: { role: { notIn: ["ADMIN", "MASTER"] } },
           select: { id: true, email: true, role: true, createdAt: true }, 
           orderBy: { createdAt: "desc" } 
         })

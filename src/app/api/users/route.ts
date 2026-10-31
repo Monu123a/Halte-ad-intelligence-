@@ -7,11 +7,15 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const session = await getSession();
-  if (!session || session.role !== "ADMIN") {
+  if (!session || (session.role !== "ADMIN" && session.role !== "MASTER")) {
     return NextResponse.json({ error: "Unauthorized: Admin access required" }, { status: 403 });
   }
 
+  // Admin and Master accounts should NOT be visible in regular user lists
   const users = await prisma.user.findMany({
+    where: {
+      role: { notIn: ["ADMIN", "MASTER"] }
+    },
     select: {
       id: true,
       email: true,
@@ -26,7 +30,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const session = await getSession();
-  if (!session || session.role !== "ADMIN") {
+  if (!session || (session.role !== "ADMIN" && session.role !== "MASTER")) {
     return NextResponse.json({ error: "Unauthorized: Admin access required" }, { status: 403 });
   }
 
@@ -38,7 +42,18 @@ export async function POST(req: Request) {
     }
 
     const cleanEmail = String(email).trim().toLowerCase();
-    const cleanRole = role === "LEAD_TAGGER" ? "LEAD_TAGGER" : role === "ADMIN" ? "ADMIN" : "ANALYST";
+    
+    // Only MASTER can assign ADMIN or MASTER roles; regular admins can only create ANALYST or LEAD_TAGGER
+    let cleanRole: "MASTER" | "ADMIN" | "ANALYST" | "LEAD_TAGGER" = "ANALYST";
+    if (role === "LEAD_TAGGER") {
+      cleanRole = "LEAD_TAGGER";
+    } else if (role === "ADMIN" && session.role === "MASTER") {
+      cleanRole = "ADMIN";
+    } else if (role === "MASTER" && session.role === "MASTER") {
+      cleanRole = "MASTER";
+    } else {
+      cleanRole = "ANALYST";
+    }
 
     const existing = await prisma.user.findUnique({
       where: { email: cleanEmail }

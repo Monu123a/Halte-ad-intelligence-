@@ -10,8 +10,10 @@ export function Sidebar({ user }: { user?: { email: string; role: string } | nul
   if (pathname === "/login") return null;
 
   const isLeadTagger = user?.role === "LEAD_TAGGER";
+  const isMaster = user?.role === "MASTER";
 
   const navItems = [
+    ...(isMaster ? [{ label: "Master Panel", href: "/master", requiresAdmin: false, requiresMaster: true, badge: "👑 MASTER" }] : []),
     { label: "Overview", href: "/", requiresAdmin: true },
     { label: "AI Advisor", href: "/ai-advisor", requiresAdmin: true, badge: "✨ AI" },
     { label: "Abandoned Carts", href: "/abandoned-carts", requiresAdmin: false },
@@ -100,13 +102,15 @@ export function Sidebar({ user }: { user?: { email: string; role: string } | nul
             </div>
             <div className="flex items-center gap-1.5 mt-1">
               <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
-                user.role === "ADMIN" 
+                user.role === "MASTER"
+                  ? "bg-purple-500/20 text-purple-300 border border-purple-400/40"
+                  : user.role === "ADMIN" 
                   ? "bg-green/20 text-green border border-green/30" 
                   : user.role === "LEAD_TAGGER" 
                   ? "bg-amber-tint text-amber border border-[#e3d3a8]" 
                   : "bg-stone/20 text-stone border border-stone-dark/30"
               }`}>
-                {user.role === "LEAD_TAGGER" ? "Lead Tagger" : user.role}
+                {user.role === "MASTER" ? "👑 Master Authority" : user.role === "LEAD_TAGGER" ? "Lead Tagger" : user.role}
               </span>
             </div>
           </div>

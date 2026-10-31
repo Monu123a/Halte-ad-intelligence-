@@ -5,7 +5,7 @@ import { useState } from "react";
 interface UserItem {
   id: string;
   email: string;
-  role: "ADMIN" | "ANALYST" | "LEAD_TAGGER";
+  role: "MASTER" | "ADMIN" | "ANALYST" | "LEAD_TAGGER";
   createdAt: string | Date;
 }
 
@@ -16,11 +16,15 @@ export function TeamManagement({
   initialUsers: UserItem[]; 
   currentUserId?: string;
 }) {
-  const [users, setUsers] = useState<UserItem[]>(initialUsers);
+  // Admin and Master accounts should NOT be visible in users list
+  const filteredInitial = (initialUsers || []).filter(
+    (u) => u.role !== "ADMIN" && (u.role as string) !== "MASTER"
+  );
+  const [users, setUsers] = useState<UserItem[]>(filteredInitial);
   const [showAddModal, setShowAddModal] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<"LEAD_TAGGER" | "ADMIN" | "ANALYST">("LEAD_TAGGER");
+  const [role, setRole] = useState<"LEAD_TAGGER" | "ANALYST">("LEAD_TAGGER");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -149,7 +153,6 @@ export function TeamManagement({
                 className="w-full text-[13px] px-3 py-2 border border-stone rounded-sm bg-white outline-none focus:border-ink cursor-pointer"
               >
                 <option value="LEAD_TAGGER">Lead Tagger (Leads &amp; Abandoned Carts - Sales Recovery)</option>
-                <option value="ADMIN">Admin (Full Access &amp; User Management)</option>
                 <option value="ANALYST">Analyst (Full Analytics &amp; Reports)</option>
               </select>
             </div>

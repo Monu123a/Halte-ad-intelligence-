@@ -12,14 +12,16 @@ datasource db {
 }
 
 model User {
-  id            String   @id @default(cuid())
-  email         String   @unique
-  passwordHash  String
-  role          Role     @default(ANALYST)
-  createdAt     DateTime @default(now())
+  id             String          @id @default(cuid())
+  email          String          @unique
+  passwordHash   String
+  role           Role            @default(ANALYST)
+  createdAt      DateTime        @default(now())
+  aiChatSessions AIChatSession[]
 }
 
 enum Role {
+  MASTER
   ADMIN
   ANALYST
   LEAD_TAGGER
@@ -286,4 +288,31 @@ enum CartStatus {
   RECOVERED
   LOST
 }
+
+model AIChatSession {
+  id        String          @id @default(cuid())
+  userId    String
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  messages  AIChatMessage[]
+
+  @@index([userId])
+  @@index([updatedAt])
+}
+
+model AIChatMessage {
+  id        String        @id @default(cuid())
+  sessionId String
+  session   AIChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role      String        // "user" | "assistant"
+  content   String        @db.Text
+  timestamp String
+  createdAt DateTime      @default(now())
+
+  @@index([sessionId])
+  @@index([createdAt])
+}
+
 

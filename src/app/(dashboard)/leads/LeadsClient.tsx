@@ -9,7 +9,7 @@ import { extractLeadMetadata } from "@/lib/leadMatcher";
 interface UserItem {
   id: string;
   email: string;
-  role: "ADMIN" | "ANALYST" | "LEAD_TAGGER";
+  role: "MASTER" | "ADMIN" | "ANALYST" | "LEAD_TAGGER";
   createdAt: string | Date;
 }
 
@@ -39,12 +39,14 @@ export default function LeadsClient({
     setExpandedThreads(prev => ({ ...prev, [leadId]: !prev[leadId] }));
   };
 
-  // Team permission state for WhatsApp lead tagging
-  const [users, setUsers] = useState<UserItem[]>(initialUsers);
+  // Team permission state: Admin and Master accounts hidden from regular view
+  const [users, setUsers] = useState<UserItem[]>(
+    (initialUsers || []).filter((u) => u.role !== "ADMIN" && (u.role as string) !== "MASTER")
+  );
   const [showTeamModal, setShowTeamModal] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [newRole, setNewRole] = useState<"LEAD_TAGGER" | "ANALYST" | "ADMIN">("LEAD_TAGGER");
+  const [newRole, setNewRole] = useState<"LEAD_TAGGER" | "ANALYST">("LEAD_TAGGER");
   const [teamLoading, setTeamLoading] = useState(false);
   const [teamError, setTeamError] = useState("");
   const [teamSuccess, setTeamSuccess] = useState("");
@@ -953,7 +955,6 @@ export default function LeadsClient({
                   >
                     <option value="LEAD_TAGGER">Lead Tagger (Leads &amp; Abandoned Carts)</option>
                     <option value="ANALYST">Analyst (View Reports &amp; Tag)</option>
-                    <option value="ADMIN">Admin (Full Access)</option>
                   </select>
                 </div>
               </div>

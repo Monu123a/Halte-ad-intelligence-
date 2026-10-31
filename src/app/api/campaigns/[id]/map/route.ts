@@ -4,7 +4,7 @@ import { getSession } from "@/lib/auth";
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const session = await getSession();
-  if (!session || session.role !== "ADMIN") return new NextResponse("Unauthorized", { status: 403 });
+  if (!session || (session.role !== "ADMIN" && session.role !== "MASTER")) return new NextResponse("Unauthorized", { status: 403 });
 
   const body = await req.json();
   const { brandPageId, products } = body;

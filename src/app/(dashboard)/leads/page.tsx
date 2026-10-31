@@ -10,7 +10,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: { tag?
   const query = searchParams.q || "";
 
   const session = await getSession();
-  const isAdmin = session?.role === "ADMIN";
+  const isAdmin = session?.role === "ADMIN" || session?.role === "MASTER";
   
   const [leads, adSets, users] = await Promise.all([
     getLeadsData(currentTag, query),
@@ -29,6 +29,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: { tag?
     }),
     isAdmin
       ? prisma.user.findMany({
+          where: { role: { notIn: ["ADMIN", "MASTER"] } },
           select: { id: true, email: true, role: true, createdAt: true },
           orderBy: { createdAt: "desc" }
         })

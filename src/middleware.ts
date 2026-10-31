@@ -23,6 +23,17 @@ export async function middleware(req: NextRequest) {
   const token = req.cookies.get("session")?.value;
   const payload = token ? parseJwtPayload(token) : null;
   const isLeadTagger = payload?.role === "LEAD_TAGGER";
+  const isMaster = payload?.role === "MASTER";
+
+  // Restrict Master Panel to MASTER role only
+  if (pathname.startsWith("/master") || pathname.startsWith("/api/master")) {
+    if (!isMaster) {
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json({ error: "Forbidden: Master authority required" }, { status: 403 });
+      }
+      return NextResponse.redirect(new URL("/", req.url));
+    }
+  }
 
   // Allow auth, webhook, and cron API routes
   if (
