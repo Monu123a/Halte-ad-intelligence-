@@ -27,8 +27,8 @@ export default function LoginPage() {
       if (!res.ok) {
         setError(data.error || "Failed to login");
       } else {
-        router.push("/");
-        router.refresh();
+        const dest = data.user?.role === "LEAD_TAGGER" ? "/leads" : "/";
+        window.location.href = dest;
       }
     } catch (err) {
       setError("An unexpected error occurred");

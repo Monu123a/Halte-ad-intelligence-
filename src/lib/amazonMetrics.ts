@@ -44,7 +44,18 @@ export interface AmazonBasicMetricsReport {
   [key: string]: any;
 }
 
+let amazonMetricsCache: { data: AmazonBasicMetricsReport; expiresAt: number } | null = null;
+
+export function invalidateAmazonMetricsCache() {
+  amazonMetricsCache = null;
+}
+
 export async function getAmazonOverviewMetrics(customRange?: { from?: Date; to?: Date }): Promise<AmazonBasicMetricsReport> {
+  const nowMs = Date.now();
+  if (!customRange?.from && amazonMetricsCache && nowMs < amazonMetricsCache.expiresAt) {
+    return amazonMetricsCache.data;
+  }
+
   const conn = await prisma.adConnection.findFirst({
     where: { platform: "AMAZON" },
     include: {
@@ -207,5 +218,9 @@ export async function getAmazonOverviewMetrics(customRange?: { from?: Date; to?:
     };
   }
 
-  return report as AmazonBasicMetricsReport;
+  const finalReport = report as AmazonBasicMetricsReport;
+  if (!customRange?.from) {
+    amazonMetricsCache = { data: finalReport, expiresAt: Date.now() + 300000 };
+  }
+  return finalReport;
 }

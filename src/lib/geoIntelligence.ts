@@ -472,10 +472,23 @@ function getFilteredBrandTip(brand: string, baseTip: string): string {
   return baseTip;
 }
 
+const geoReportCache = new Map<string, { data: GeoReportData; expiresAt: number }>();
+
+export function invalidateGeoReportCache() {
+  geoReportCache.clear();
+}
+
 export async function getGeographicalReport(
   timeRange: "all" | "90d" | "30d" = "all",
   brandFilter: string = "ALL"
 ): Promise<GeoReportData> {
+  const cacheKey = `${timeRange}_${brandFilter}`;
+  const nowMs = Date.now();
+  const cached = geoReportCache.get(cacheKey);
+  if (cached && nowMs < cached.expiresAt) {
+    return cached.data;
+  }
+
   let targetDate = new Date("2020-01-01T00:00:00.000Z");
   if (timeRange === "90d") {
     targetDate = new Date("2026-07-01T00:00:00.000Z");
@@ -500,11 +513,17 @@ export async function getGeographicalReport(
 
   // Fetch WhatsApp leads to compute direct attribution by state and by brand
   const allLeads = await prisma.lead.findMany({
-    include: {
+    select: {
+      contactRef: true,
       adSet: {
-        include: {
+        select: {
           campaign: {
-            include: { brand: true }
+            select: {
+              region: true,
+              brand: {
+                select: { name: true }
+              }
+            }
           }
         }
       }
@@ -675,7 +694,7 @@ export async function getGeographicalReport(
   const efficientStates = states.filter(s => s.leads >= 30 && s.cpl > 0).sort((a, b) => a.cpl - b.cpl);
   const topStateByEfficiency = efficientStates[0]?.state || "Himachal Pradesh";
 
-  return {
+  const reportResult: GeoReportData = {
     summary: {
       totalSpend: Math.round(totalSpend),
       totalLeads: totalMetaLeads,
@@ -698,6 +717,9 @@ export async function getGeographicalReport(
     zones,
     states
   };
+
+  geoReportCache.set(cacheKey, { data: reportResult, expiresAt: Date.now() + 300000 }); // 5 min cache
+  return reportResult;
 }
 
 export function resolvePhoneState(contactRef: string | null | undefined): string | null {

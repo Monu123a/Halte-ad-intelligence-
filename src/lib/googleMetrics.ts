@@ -44,7 +44,18 @@ export interface GoogleBasicMetricsReport {
   [key: string]: any;
 }
 
+let googleMetricsCache: { data: GoogleBasicMetricsReport; expiresAt: number } | null = null;
+
+export function invalidateGoogleMetricsCache() {
+  googleMetricsCache = null;
+}
+
 export async function getGoogleOverviewMetrics(customRange?: { from?: Date; to?: Date }): Promise<GoogleBasicMetricsReport> {
+  const nowMs = Date.now();
+  if (!customRange?.from && googleMetricsCache && nowMs < googleMetricsCache.expiresAt) {
+    return googleMetricsCache.data;
+  }
+
   const conn = await prisma.adConnection.findFirst({
     where: { platform: "GOOGLE" },
     include: {
@@ -223,5 +234,9 @@ export async function getGoogleOverviewMetrics(customRange?: { from?: Date; to?:
     };
   }
 
-  return report as GoogleBasicMetricsReport;
+  const finalReport = report as GoogleBasicMetricsReport;
+  if (!customRange?.from) {
+    googleMetricsCache = { data: finalReport, expiresAt: Date.now() + 300000 };
+  }
+  return finalReport;
 }

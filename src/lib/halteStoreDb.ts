@@ -62,39 +62,46 @@ export async function getStoreMetricsSummary(): Promise<StoreStatsSummary> {
   }
 
   try {
-    const [statsRes, custCountRes, topStatesRes, topSkusRes, topCustRes] = await Promise.all([
-      p.query(`
-        SELECT 
-          count(*) as total_orders,
-          sum(case when order_status NOT IN ('Cancelled', 'Returned') then item_price * quantity else 0 end) as net_revenue,
-          sum(case when order_status NOT IN ('Cancelled', 'Returned') then profit else 0 end) as net_profit,
-          count(case when order_status = 'Cancelled' then 1 end) as cancelled_orders
-        FROM orders;
-      `),
-      p.query(`SELECT count(*) as total_customers FROM customers;`),
-      p.query(`
-        SELECT ship_state, count(*) as orders, sum(item_price * quantity) as revenue
-        FROM orders
-        WHERE ship_state IS NOT NULL AND order_status NOT IN ('Cancelled')
-        GROUP BY ship_state
-        ORDER BY revenue DESC
-        LIMIT 6;
-      `),
-      p.query(`
-        SELECT sku, count(*) as count, sum(item_price * quantity) as revenue, sum(profit) as profit
-        FROM orders
-        WHERE sku IS NOT NULL AND order_status NOT IN ('Cancelled')
-        GROUP BY sku
-        ORDER BY revenue DESC
-        LIMIT 6;
-      `),
-      p.query(`
-        SELECT name, phone, state, total_spent, total_orders, notes
-        FROM customers
-        WHERE total_spent > 0
-        ORDER BY total_spent DESC
-        LIMIT 6;
-      `)
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("HalteStoreDB query timeout after 2500ms")), 2500)
+    );
+
+    const [statsRes, custCountRes, topStatesRes, topSkusRes, topCustRes] = await Promise.race([
+      Promise.all([
+        p.query(`
+          SELECT 
+            count(*) as total_orders,
+            sum(case when order_status NOT IN ('Cancelled', 'Returned') then item_price * quantity else 0 end) as net_revenue,
+            sum(case when order_status NOT IN ('Cancelled', 'Returned') then profit else 0 end) as net_profit,
+            count(case when order_status = 'Cancelled' then 1 end) as cancelled_orders
+          FROM orders;
+        `),
+        p.query(`SELECT count(*) as total_customers FROM customers;`),
+        p.query(`
+          SELECT ship_state, count(*) as orders, sum(item_price * quantity) as revenue
+          FROM orders
+          WHERE ship_state IS NOT NULL AND order_status NOT IN ('Cancelled')
+          GROUP BY ship_state
+          ORDER BY revenue DESC
+          LIMIT 6;
+        `),
+        p.query(`
+          SELECT sku, count(*) as count, sum(item_price * quantity) as revenue, sum(profit) as profit
+          FROM orders
+          WHERE sku IS NOT NULL AND order_status NOT IN ('Cancelled')
+          GROUP BY sku
+          ORDER BY revenue DESC
+          LIMIT 6;
+        `),
+        p.query(`
+          SELECT name, phone, state, total_spent, total_orders, notes
+          FROM customers
+          WHERE total_spent > 0
+          ORDER BY total_spent DESC
+          LIMIT 6;
+        `)
+      ]),
+      timeoutPromise
     ]);
 
     const totalOrders = parseInt(statsRes.rows[0]?.total_orders || "0", 10);

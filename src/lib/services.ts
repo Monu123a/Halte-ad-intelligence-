@@ -1,15 +1,17 @@
 import prisma from "@/lib/prisma";
 import { generateRecommendations, AdSetStats, SeasonalLookup, isMessagingAdSet } from "@/lib/recommendations";
 
-// 60-second In-Memory Cache to make page switching instant
+// In-Memory Cache to make page switching instant
 const cacheRecommendations = new Map<string, { data: any; expiresAt: number }>();
 let cacheOverviewStats: { data: any; expiresAt: number } | null = null;
 const cacheLeads = new Map<string, { data: any; expiresAt: number }>();
+let cacheSyncTimeline: { data: SyncTimelineOverview; expiresAt: number } | null = null;
 
 export function invalidateServicesCache() {
   cacheRecommendations.clear();
   cacheOverviewStats = null;
   cacheLeads.clear();
+  cacheSyncTimeline = null;
 }
 
 export async function getLeadsData(currentTag: string = "UNTAGGED", query: string = "") {
@@ -208,6 +210,11 @@ export interface SyncTimelineOverview {
 }
 
 export async function getSyncTimelineOverview(): Promise<SyncTimelineOverview> {
+  const now = Date.now();
+  if (cacheSyncTimeline && now < cacheSyncTimeline.expiresAt) {
+    return cacheSyncTimeline.data;
+  }
+
   const [connections, metaDaily, googleDaily, amazonDaily] = await Promise.all([
     prisma.adConnection.findMany({
       where: { isEnabled: true },
@@ -265,7 +272,7 @@ export async function getSyncTimelineOverview(): Promise<SyncTimelineOverview> {
     ? new Date(Math.max(...allDataDates.map(d => d.getTime())))
     : null;
 
-  return {
+  const result: SyncTimelineOverview = {
     overallLastSyncedAt,
     overallDataThroughDate,
     platforms: {
@@ -310,6 +317,9 @@ export async function getSyncTimelineOverview(): Promise<SyncTimelineOverview> {
       }
     }
   };
+
+  cacheSyncTimeline = { data: result, expiresAt: now + 300000 }; // 5 min cache
+  return result;
 }
 
 export async function getOverviewStats(range: string = "30d", customRange?: { from?: Date; to?: Date }) {

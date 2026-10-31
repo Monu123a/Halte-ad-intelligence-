@@ -68,6 +68,7 @@ export function Sidebar({ user }: { user?: { email: string; role: string } | nul
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch={false}
                 className={`flex items-center justify-between text-[14px] py-3 px-1 cursor-pointer border-l-2 transition-all ${
                   isActive
                     ? "text-white font-semibold border-white pl-[14px]"
