@@ -18,6 +18,16 @@ export async function runAmazonSync(connectionId: string) {
     return;
   }
 
+  // Handle manual ingestion / report mode gracefully without failing decrypt
+  if (conn.accessTokenEnc.startsWith("manual_") || !conn.accessTokenEnc.includes(":")) {
+    console.log(`Amazon account ${conn.platformAccountId} is configured for report ingestion.`);
+    await prisma.adConnection.update({
+      where: { id: conn.id },
+      data: { lastSyncedAt: new Date(), status: "CONNECTED" }
+    });
+    return;
+  }
+
   let accessToken = decrypt(conn.accessTokenEnc);
   const now = new Date();
 
