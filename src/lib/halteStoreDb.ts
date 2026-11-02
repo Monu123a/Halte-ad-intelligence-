@@ -194,6 +194,16 @@ export async function runSafeStoreQuery(sql: string): Promise<any[]> {
   // 3. fix "DATE(purchase_date) = ..." -> "purchase_date::date = ..."
   clean = clean.replace(/DATE\(purchase_date\)/gi, "purchase_date::date");
 
+  // 4. Auto-correct phone, email, or customer name search on 'orders' -> 'customers'
+  // (Amazon MTR 'orders' strips PII; all contact info lives in 'customers')
+  if (clean.toLowerCase().includes("from orders") && (clean.toLowerCase().includes("phone") || clean.toLowerCase().includes("email") || clean.toLowerCase().includes("name"))) {
+    clean = clean.replace(/\bfrom orders\b/gi, "FROM customers");
+    clean = clean.replace(/phone\s*=\s*'(\+?\d+)'/gi, (match, digits) => {
+      const cleanDigits = digits.replace(/\D/g, "").slice(-10);
+      return `phone LIKE '%${cleanDigits}%'`;
+    });
+  }
+
   // Ensure query has a limit to prevent memory spikes
   const cappedSql = clean.toLowerCase().includes("limit") ? clean : `${clean} LIMIT 50`;
   const res = await p.query(cappedSql);

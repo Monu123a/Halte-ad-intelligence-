@@ -151,6 +151,18 @@ You are fine-tuned specifically for Halte's exact product lines, business models
   - Profit column: 'profit'. Cost price: 'cogs_price'.
   - State column: 'ship_state'. City column: 'ship_city'. Status: 'order_status'.
 
+=== CUSTOMER CONTACT & ORDER LOOKUP RULES ===
+* Amazon Order Data Privacy: The 'orders' table contains Amazon MTR sales and DOES NOT contain customer phone numbers or emails (Amazon strictly strips buyer PII).
+* To find or confirm customer orders by phone number, email, or customer/business name:
+  - ALWAYS query the 'customers' table!
+    Columns: id, customer_id, name, phone, email, address, city, state, pincode, total_orders, total_spent, last_order_date, notes, channel
+    Example phone search: SELECT * FROM customers WHERE phone LIKE '%9046427181%'
+    Example email search: SELECT * FROM customers WHERE email ILIKE '%craftsbazaar%'
+    Example name search: SELECT * FROM customers WHERE name ILIKE '%yantra%'
+  - For B2B buyer names and invoice numbers, query 'PowerBISales':
+    Columns: "Order Id", "Invoice Number", "Invoice Date", "Buyer Name", "Customer Bill To Gstid", "Item Description", "Invoice Amount", Quantity, BRAND
+    Example: SELECT "Order Id", "Invoice Number", "Buyer Name", "Item Description", "Invoice Amount" FROM "PowerBISales" WHERE "Buyer Name" ILIKE '%yantra%'
+
 You have REAL-TIME LIVE READ ACCESS to all connected databases and marketing systems:
 
 === 1. HALTE PRODUCTION STORE DATABASE (Real Orders & Customers) ===
@@ -208,7 +220,7 @@ ${(storeData?.recentCustomers || []).slice(0, 3).map((c: any) => `  - ${c.name} 
         functionDeclarations: [
           {
             name: "query_store_database",
-            description: "Executes a safe read-only SELECT query on the Halte Production Store Database. Tables available: 'orders' (id, amazon_order_id, purchase_date, last_updated_date, order_status, fulfillment_channel, sales_channel, sku, asin, item_status, quantity, currency, item_price, item_tax, cogs_price, profit, ship_city, ship_state, shipping_price, ship_postal_code, amazon_fee), 'customers' (id, customer_id, name, phone, email, address, city, state, pincode, total_orders, total_spent, notes, created_at, channel), 'PowerBISales' (Date, Year, Month_Name, BRAND, Item Description, Sku, Category, Ship To City, Ship To State, Invoice Amount, Quantity), 'cogs' (sku, brand, cost_price). NOTE: For dates in 'orders', ALWAYS use 'purchase_date::date = CURRENT_DATE' or 'purchase_date::date = \\'YYYY-MM-DD\\''; never use 'order_date'.",
+            description: "Executes a safe read-only SELECT query on the Halte Production Store Database. Tables available: 'customers' (id, customer_id, name, phone, email, address, city, state, pincode, total_orders, total_spent, notes, last_order_date, channel) -> USE THIS FOR ANY CUSTOMER PHONE NUMBER, EMAIL, OR NAME LOOKUP (e.g. SELECT * FROM customers WHERE phone LIKE '%9046427181%' OR email ILIKE '%...%'); 'orders' (id, amazon_order_id, purchase_date, last_updated_date, order_status, fulfillment_channel, sales_channel, sku, asin, item_status, quantity, currency, item_price, item_tax, cogs_price, profit, ship_city, ship_state, shipping_price, ship_postal_code, amazon_fee) -> Note: 'orders' does NOT have phone/email (Amazon strips customer PII); 'PowerBISales' (\"Order Id\", \"Invoice Number\", \"Invoice Date\", \"Buyer Name\", \"Customer Bill To Gstid\", \"Item Description\", \"Invoice Amount\", Quantity, BRAND, \"Ship To City\", \"Ship To State\") -> for B2B buyer names and invoices; 'cogs' (sku, brand, cost_price).",
             parameters: {
               type: "OBJECT",
               properties: {
@@ -245,7 +257,7 @@ ${(storeData?.recentCustomers || []).slice(0, 3).map((c: any) => `  - ${c.name} 
       parts: [{ text: systemContext + "\n\nUser Question: " + userMessage }]
     });
 
-    const candidateModels = ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-2.5-flash"];
+    const candidateModels = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
 
     const executeGeminiCall = async (payloadContents: any[], includeTools: boolean = true) => {
       let lastError = "";
