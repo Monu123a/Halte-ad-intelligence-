@@ -14,6 +14,8 @@ async function getBrandData(brandName: string, currentMonthStr: string): Promise
   isSeasonal: boolean;
   totalSpend: number;
   spendByRegion: Record<string, number>;
+  spendByBrand: Record<string, number>;
+  isHalteAll: boolean;
 }> {
   const cacheKey = `${brandName}_${currentMonthStr}`;
   const now = Date.now();
@@ -26,6 +28,7 @@ async function getBrandData(brandName: string, currentMonthStr: string): Promise
     select: { id: true, name: true, pageId: true, isSeasonal: true, colorToken: true }
   });
   const normalizedBrandName = decodeURIComponent(brandName).trim().toLowerCase();
+  const isHalteAll = normalizedBrandName === "halte all" || normalizedBrandName === "all";
   const currentBrand = allBrands.find(b => b.name.toLowerCase() === normalizedBrandName);
   const isSeasonal = currentBrand?.isSeasonal || false;
 
@@ -35,12 +38,13 @@ async function getBrandData(brandName: string, currentMonthStr: string): Promise
 
   let totalSpend = 0;
   const spendByRegion: Record<string, number> = {};
+  const spendByBrand: Record<string, number> = {};
 
-  if (currentBrand) {
+  if (isHalteAll || currentBrand) {
     const agg = await prisma.dailyMetric.groupBy({
       by: ['adSetId'],
       where: { 
-        adSet: { campaign: { brandPageId: currentBrand.pageId } },
+        ...(isHalteAll ? {} : { adSet: { campaign: { brandPageId: currentBrand?.pageId } } }),
         date: {
           gte: startDate,
           lte: endDate
@@ -55,25 +59,32 @@ async function getBrandData(brandName: string, currentMonthStr: string): Promise
       select: {
         id: true,
         campaign: {
-          select: { region: true }
+          select: {
+            region: true,
+            brandPageId: true,
+            brand: { select: { name: true } }
+          }
         }
       }
     });
 
-    const regionMap: Record<string, string> = {};
-    for (const adSet of adSets) {
-      regionMap[adSet.id] = adSet.campaign?.region || "Unknown";
-    }
+    const brandPageMap = new Map(allBrands.map(b => [b.pageId, b.name]));
+    const adSetLookup = new Map(adSets.map(a => [a.id, a]));
 
     for (const a of agg) {
       const s = Number(a._sum.spend || 0);
-      const r = regionMap[a.adSetId] || "Unknown";
-      spendByRegion[r] = (spendByRegion[r] || 0) + s;
       totalSpend += s;
+      const adset = adSetLookup.get(a.adSetId);
+      const r = adset?.campaign?.region || "National / All India";
+      spendByRegion[r] = (spendByRegion[r] || 0) + s;
+
+      const rawBrandName = adset?.campaign?.brand?.name || (adset?.campaign?.brandPageId ? brandPageMap.get(adset.campaign.brandPageId) : null) || "Halte (Direct)";
+      const bName = rawBrandName === "Halte All" ? "Halte (Multi-Brand)" : rawBrandName;
+      spendByBrand[bName] = (spendByBrand[bName] || 0) + s;
     }
   }
 
-  const result = { currentBrand, isSeasonal, totalSpend, spendByRegion };
+  const result = { currentBrand, isSeasonal, totalSpend, spendByRegion, spendByBrand, isHalteAll };
   brandReportCache.set(cacheKey, { data: result, expiresAt: now + 300000 }); // 5 min cache
   return result;
 }
@@ -92,7 +103,7 @@ export default async function BrandReportPage({
 
   const brandName = decodeURIComponent(params.brandId);
   const currentMonthStr = searchParams.month || new Date().toISOString().substring(0, 7);
-  const { currentBrand, isSeasonal, totalSpend, spendByRegion } = await getBrandData(brandName, currentMonthStr);
+  const { currentBrand, isSeasonal, totalSpend, spendByRegion, spendByBrand, isHalteAll } = await getBrandData(brandName, currentMonthStr);
 
   const circumference = 2 * Math.PI * 62; // ~389.55
   const segments: any[] = [];
@@ -125,6 +136,37 @@ export default async function BrandReportPage({
     });
     
     currentOffset += dashLength;
+  }
+
+  // Spend by Brand donut segments for Halte All
+  const brandSegments: any[] = [];
+  let brandOffset = 0;
+  const sortedBrands: [string, number][] = (Object.entries(spendByBrand) as [string, number][]).sort(
+    (a, b) => Number(b[1]) - Number(a[1])
+  );
+
+  const brandColorMap: Record<string, string> = {
+    Gardena: "#15803d",
+    BKR: "#d97706",
+    Gorilla: "#475569",
+    Velcro: "#b91c1c",
+    "Halte (Multi-Brand)": "#1c1917",
+    "Halte (Direct)": "#78716c"
+  };
+
+  for (let i = 0; i < sortedBrands.length; i++) {
+    const [bName, spend] = sortedBrands[i];
+    const fraction = totalSpend > 0 ? spend / totalSpend : 0;
+    const dashLength = fraction * circumference;
+    brandSegments.push({
+      brand: bName,
+      spend,
+      percentage: Math.round(fraction * 100),
+      dasharray: `${dashLength} ${circumference}`,
+      dashoffset: -brandOffset,
+      color: brandColorMap[bName] || colors[i % colors.length]
+    });
+    brandOffset += dashLength;
   }
   
   const getTabClass = (tabName: string) => {
@@ -173,17 +215,72 @@ export default async function BrandReportPage({
         </div>
       )}
 
-      <div className="grid grid-cols-[1.4fr_1fr] gap-[1px] bg-stone border border-stone mb-[1px] rounded-b-md overflow-hidden">
+      <div className={`grid ${isHalteAll ? "grid-cols-1 md:grid-cols-3" : "grid-cols-[1.4fr_1fr]"} gap-[1px] bg-stone border border-stone mb-[1px] rounded-b-md overflow-hidden`}>
         <div className="bg-card p-7">
-          <h3 className="m-0 mb-1 text-[15px] font-bold font-sans">Brand Spend</h3>
-          <div className="text-[12.5px] text-ink-soft mb-[18px]">Total spend this cycle</div>
+          <h3 className="m-0 mb-1 text-[15px] font-bold font-sans">
+            {isHalteAll ? "Combined Brand Spend" : "Brand Spend"}
+          </h3>
+          <div className="text-[12.5px] text-ink-soft mb-[18px]">
+            {isHalteAll ? "All brands combined this cycle" : "Total spend this cycle"}
+          </div>
           <div className="font-serif text-[32px] font-semibold text-ink">
             ₹{totalSpend.toLocaleString()}
           </div>
+          {isHalteAll && (
+            <div className="mt-4 pt-3 border-t border-stone/50 space-y-1.5 text-[11.5px]">
+              <div className="text-[10.5px] font-bold uppercase tracking-wider text-stone-dark mb-1">Top Brand Spends:</div>
+              {sortedBrands.slice(0, 5).map(([b, amt]) => (
+                <div key={b} className="flex justify-between items-center text-ink-soft">
+                  <span className="font-medium">{b}</span>
+                  <span className="font-mono text-ink">₹{Math.round(amt).toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
+
+        {isHalteAll && (
+          <div className="bg-card p-7">
+            <h3 className="m-0 mb-1 text-[15px] font-bold font-sans">Spend by Brand</h3>
+            <div className="text-[12.5px] text-ink-soft mb-[18px]">Share of total Halte spend</div>
+            <svg viewBox="0 0 180 180" width="100%" height="150">
+              <circle cx="90" cy="90" r="62" fill="none" stroke="var(--stone)" strokeWidth="24"/>
+              {brandSegments.map((seg) => (
+                <circle 
+                  key={seg.brand}
+                  cx="90" cy="90" r="62" 
+                  fill="none" 
+                  stroke={seg.color} 
+                  strokeWidth="24" 
+                  strokeDasharray={seg.dasharray} 
+                  strokeDashoffset={seg.dashoffset} 
+                  transform="rotate(-90 90 90)"
+                />
+              ))}
+              <text x="90" y="86" textAnchor="middle" fontFamily="var(--font-newsreader)" fontSize="20" fill="var(--ink)">
+                {brandSegments.length > 0 ? `${brandSegments[0].percentage}%` : "0%"}
+              </text>
+              <text x="90" y="104" textAnchor="middle" fontFamily="var(--font-inter)" fontSize="10" fill="var(--stone-dark)">
+                {brandSegments.length > 0 ? brandSegments[0].brand : "No data"}
+              </text>
+            </svg>
+            
+            <div className="mt-2 text-[11px] text-ink-soft flex flex-wrap gap-x-3 gap-y-1 justify-center">
+              {brandSegments.map(seg => (
+                <div key={seg.brand} className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: seg.color }}></span>
+                  {seg.brand} ({seg.percentage}%)
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="bg-card p-7">
           <h3 className="m-0 mb-1 text-[15px] font-bold font-sans">Spend by region</h3>
-          <div className="text-[12.5px] text-ink-soft mb-[18px]">Share of {brandName} spend</div>
+          <div className="text-[12.5px] text-ink-soft mb-[18px]">
+            {isHalteAll ? "Share of total Halte spend" : `Share of ${brandName} spend`}
+          </div>
           <svg viewBox="0 0 180 180" width="100%" height="150">
             <circle cx="90" cy="90" r="62" fill="none" stroke="var(--stone)" strokeWidth="24"/>
             {segments.map((seg) => (
