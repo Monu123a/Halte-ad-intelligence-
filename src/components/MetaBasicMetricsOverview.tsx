@@ -61,6 +61,10 @@ export function MetaBasicMetricsOverview({
   const [googleSearchQuery, setGoogleSearchQuery] = useState<string>("");
   const [amazonCampaignMode, setAmazonCampaignMode] = useState<"ACTIVE" | "ALL">("ACTIVE");
   const [amazonSearchQuery, setAmazonSearchQuery] = useState<string>("");
+  const [metaCampaignMode, setMetaCampaignMode] = useState<"ACTIVE" | "ALL">("ACTIVE");
+  const [metaSearchQuery, setMetaSearchQuery] = useState<string>("");
+  const [metaBrandFilter, setMetaBrandFilter] = useState<string>("ALL");
+  const [metaFestiveOnly, setMetaFestiveOnly] = useState<boolean>(false);
   const [isUploadingAmazon, setIsUploadingAmazon] = useState<boolean>(false);
   const [uploadAmazonStatus, setUploadAmazonStatus] = useState<{ success?: boolean; message?: string } | null>(null);
 
@@ -1696,6 +1700,268 @@ export function MetaBasicMetricsOverview({
               )}
             </div>
           )}
+
+          {/* Meta Campaigns Table (Active vs All 994 Campaigns, Search & Festival Filter) */}
+          {(() => {
+            const baseCampaigns = metaCampaignMode === "ACTIVE"
+              ? (currentPresetData.campaigns || [])
+              : (currentPresetData.allCampaigns || currentPresetData.campaigns || []);
+
+            const festiveRegex = /festiv|diwali|offer|deal|sale|navratri|christmas|rakhi/i;
+
+            const filteredCampaigns = (baseCampaigns || []).filter((c: any) => {
+              // Brand filter
+              if (metaBrandFilter !== "ALL" && c.brand?.toLowerCase() !== metaBrandFilter.toLowerCase()) {
+                return false;
+              }
+              // Festive filter
+              if (metaFestiveOnly) {
+                if (!festiveRegex.test(c.name)) return false;
+              }
+              // Search query
+              if (metaSearchQuery.trim()) {
+                const q = metaSearchQuery.toLowerCase();
+                const matchName = c.name?.toLowerCase().includes(q);
+                const matchBrand = c.brand?.toLowerCase().includes(q);
+                const matchObj = c.objective?.toLowerCase().includes(q);
+                if (!matchName && !matchBrand && !matchObj) return false;
+              }
+              return true;
+            });
+
+            return (
+              <div className="border border-stone rounded-md overflow-hidden bg-card mt-6">
+                <div className="px-4 py-3.5 bg-[#FAF9F6] border-b border-stone space-y-3">
+                  <div className="flex flex-wrap gap-3 justify-between items-center">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="font-serif text-[15px] font-semibold text-ink flex items-center gap-2">
+                        <span>Meta Campaigns</span>
+                        <span className="text-[11px] font-mono font-normal px-2 py-0.5 bg-stone/40 rounded text-ink-soft">
+                          {filteredCampaigns.length} {metaCampaignMode === "ACTIVE" ? "active" : "total"}
+                        </span>
+                      </div>
+
+                      <div className="inline-flex bg-card p-0.5 rounded border border-stone">
+                        <button
+                          onClick={() => setMetaCampaignMode("ACTIVE")}
+                          className={`px-3 py-1 rounded text-[11px] font-semibold transition-all ${
+                            metaCampaignMode === "ACTIVE"
+                              ? "bg-slate text-white shadow-2xs"
+                              : "text-ink-soft hover:text-ink"
+                          }`}
+                        >
+                          Active with Spend ({(currentPresetData.campaigns || []).length})
+                        </button>
+                        <button
+                          onClick={() => setMetaCampaignMode("ALL")}
+                          className={`px-3 py-1 rounded text-[11px] font-semibold transition-all ${
+                            metaCampaignMode === "ALL"
+                              ? "bg-slate text-white shadow-2xs"
+                              : "text-ink-soft hover:text-ink"
+                          }`}
+                        >
+                          All Account Campaigns ({currentPresetData.totalCampaignsCount || 994})
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 text-ink-soft absolute left-2.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          value={metaSearchQuery}
+                          onChange={(e) => setMetaSearchQuery(e.target.value)}
+                          placeholder={`Search ${currentPresetData.totalCampaignsCount || 994} campaigns...`}
+                          className="text-[11.5px] pl-8 pr-3 py-1 bg-card border border-stone rounded outline-none focus:border-slate w-64 transition-colors"
+                        />
+                      </div>
+                      {metaSearchQuery && (
+                        <button
+                          onClick={() => setMetaSearchQuery("")}
+                          className="text-[11px] text-ink-soft hover:text-ink underline"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Filter Chips: Brand & Festive Offers */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-stone/50 text-[11.5px]">
+                    <span className="text-ink-soft font-semibold mr-1">Filter by:</span>
+
+                    {/* Festive / Offer Toggle */}
+                    <button
+                      onClick={() => setMetaFestiveOnly(!metaFestiveOnly)}
+                      className={`px-2.5 py-0.5 rounded-sm font-semibold border flex items-center gap-1 transition-all ${
+                        metaFestiveOnly
+                          ? "bg-amber-600 text-white border-amber-600 shadow-2xs"
+                          : "bg-card text-ink-soft border-stone hover:border-amber-500 hover:text-amber-800"
+                      }`}
+                    >
+                      <span>🎉 Festive &amp; Offers</span>
+                      {metaFestiveOnly && <span className="text-[10px] bg-white/20 px-1 rounded">Active</span>}
+                    </button>
+
+                    <span className="text-stone mx-1">|</span>
+
+                    {/* Brand Filter Chips */}
+                    {["ALL", "Gardena", "BKR", "Gorilla", "Velcro", "Halte All"].map((brandName) => {
+                      const isSelected = metaBrandFilter.toLowerCase() === brandName.toLowerCase();
+                      return (
+                        <button
+                          key={brandName}
+                          onClick={() => setMetaBrandFilter(brandName)}
+                          className={`px-2.5 py-0.5 rounded-sm font-medium transition-colors ${
+                            isSelected
+                              ? "bg-ink text-white font-semibold"
+                              : "bg-card text-ink-soft border border-stone hover:bg-stone/20"
+                          }`}
+                        >
+                          {brandName === "ALL" ? "All Brands" : brandName}
+                        </button>
+                      );
+                    })}
+
+                    {(metaFestiveOnly || metaBrandFilter !== "ALL" || metaSearchQuery) && (
+                      <button
+                        onClick={() => {
+                          setMetaFestiveOnly(false);
+                          setMetaBrandFilter("ALL");
+                          setMetaSearchQuery("");
+                        }}
+                        className="ml-auto text-[11px] text-rust hover:underline font-semibold"
+                      >
+                        Reset All Filters
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
+                  <table className="w-full text-left text-[12px] border-collapse">
+                    <thead className="sticky top-0 bg-[#FAF9F6] shadow-2xs z-10">
+                      <tr className="border-b border-stone text-ink-soft font-semibold text-[11px] uppercase tracking-wider">
+                        <th className="py-2.5 px-4">Campaign Name</th>
+                        <th className="py-2.5 px-3">Brand</th>
+                        <th className="py-2.5 px-3">Objective</th>
+                        <th className="py-2.5 px-3 text-right">Spend</th>
+                        <th className="py-2.5 px-3 text-right">Impressions</th>
+                        <th className="py-2.5 px-3 text-right">Clicks</th>
+                        <th className="py-2.5 px-3 text-right">CTR</th>
+                        <th className="py-2.5 px-3 text-right">CPC</th>
+                        <th className="py-2.5 px-3 text-right">Inbound Leads</th>
+                        <th className="py-2.5 px-3 text-right">CPL</th>
+                        <th className="py-2.5 px-4">Status &amp; Insights</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone">
+                      {filteredCampaigns.length === 0 ? (
+                        <tr>
+                          <td colSpan={11} className="py-8 text-center text-ink-soft">
+                            No Meta campaigns found matching criteria.
+                            {(metaFestiveOnly || metaBrandFilter !== "ALL" || metaSearchQuery) && (
+                              <div className="mt-2">
+                                <button
+                                  onClick={() => {
+                                    setMetaFestiveOnly(false);
+                                    setMetaBrandFilter("ALL");
+                                    setMetaSearchQuery("");
+                                  }}
+                                  className="text-[12px] text-green underline font-medium"
+                                >
+                                  Clear filters to view all campaigns
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredCampaigns.map((c: any) => {
+                          const isFestive = festiveRegex.test(c.name);
+                          return (
+                            <tr key={c.id} className="hover:bg-[#FAF9F6]/70 transition-colors">
+                              <td className="py-3 px-4 font-semibold text-ink">
+                                <div className="flex flex-col gap-1 items-start">
+                                  <span>{c.name}</span>
+                                  {isFestive && (
+                                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
+                                      <span>🎉</span> Festive / Offer Campaign
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="py-3 px-3">
+                                <span className={`text-[10.5px] font-semibold px-2 py-0.5 rounded ${
+                                  c.brand === "Gardena"
+                                    ? "bg-green-tint text-green"
+                                    : c.brand === "BKR"
+                                    ? "bg-amber-tint text-amber"
+                                    : c.brand === "Velcro"
+                                    ? "bg-rust-tint text-rust"
+                                    : c.brand === "Gorilla"
+                                    ? "bg-slate-tint text-slate"
+                                    : "bg-stone text-ink-soft"
+                                }`}>
+                                  {c.brand || "Halte All"}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3 text-ink-soft font-mono text-[11px]">
+                                {c.objective || "ENGAGEMENT"}
+                              </td>
+                              <td className="py-3 px-3 text-right font-serif font-semibold text-ink">
+                                {c.spend > 0 ? `₹${c.spend.toLocaleString()}` : "₹0"}
+                              </td>
+                              <td className="py-3 px-3 text-right font-mono text-ink-soft">
+                                {c.impressions.toLocaleString()}
+                              </td>
+                              <td className="py-3 px-3 text-right font-mono text-ink-soft">
+                                {c.clicks.toLocaleString()}
+                              </td>
+                              <td className="py-3 px-3 text-right font-mono font-medium text-ink">
+                                {c.ctr > 0 ? `${c.ctr}%` : "—"}
+                              </td>
+                              <td className="py-3 px-3 text-right font-mono font-medium text-ink">
+                                {c.cpc > 0 ? `₹${c.cpc}` : "—"}
+                              </td>
+                              <td className="py-3 px-3 text-right font-mono font-semibold text-green">
+                                {c.leads > 0 ? c.leads : "—"}
+                              </td>
+                              <td className="py-3 px-3 text-right font-mono font-semibold text-ink">
+                                {c.cpl > 0 ? `₹${c.cpl}` : "—"}
+                              </td>
+                              <td className="py-3 px-4">
+                                {c.leads > 0 && c.cpl < 50 ? (
+                                  <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded bg-green-tint text-green border border-green/20">
+                                    High Efficiency Lead Gen
+                                  </span>
+                                ) : c.leads > 0 ? (
+                                  <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded bg-slate-tint text-slate border border-slate/20">
+                                    Active Lead Gen
+                                  </span>
+                                ) : c.spend > 0 && c.clicks > 100 ? (
+                                  <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                                    Traffic Driver
+                                  </span>
+                                ) : c.spend === 0 && c.impressions === 0 ? (
+                                  <span className="text-stone-dark text-[11px] font-mono">
+                                    Inactive in period
+                                  </span>
+                                ) : (
+                                  <span className="text-stone-dark text-[11px]">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>

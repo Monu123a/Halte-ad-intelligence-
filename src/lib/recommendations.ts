@@ -2,6 +2,8 @@ import { Decimal } from "@prisma/client/runtime/library";
 
 export interface AdSetStats {
   adSetId: string;
+  adSetName?: string;
+  campaignName?: string;
   spend: number;
   clicks: number;
   genuineLeads: number;
@@ -79,6 +81,9 @@ export function generateRecommendations(
       recommendations.push({
         brandId: adset.brandId,
         adSetId: adset.adSetId,
+        adSetName: adset.adSetName,
+        campaignName: adset.campaignName,
+        products: adset.products,
         costPerGenuine: 0,
         costPerSale: null,
         action: "NOT_RATED",
@@ -92,6 +97,9 @@ export function generateRecommendations(
       recommendations.push({
         brandId: adset.brandId,
         adSetId: adset.adSetId,
+        adSetName: adset.adSetName,
+        campaignName: adset.campaignName,
+        products: adset.products,
         costPerGenuine: 0,
         costPerSale: null,
         action: "NOT_RATED",
@@ -182,6 +190,9 @@ export function generateRecommendations(
         recommendations.push({
           brandId: adset.brandId,
           adSetId: adset.adSetId,
+          adSetName: adset.adSetName,
+          campaignName: adset.campaignName,
+          products: adset.products,
           costPerGenuine: adset.cost === Infinity ? 0 : adset.cost, // for link clicks we'll repurpose this field or just use cost
           costPerSale: adset.convertedLeads > 0 ? adset.spend / adset.convertedLeads : null,
           action,
@@ -195,6 +206,9 @@ export function generateRecommendations(
         recommendations.push({
           brandId: adset.brandId,
           adSetId: adset.adSetId,
+          adSetName: adset.adSetName,
+          campaignName: adset.campaignName,
+          products: adset.products,
           costPerGenuine: 0,
           costPerSale: null,
           action: "HOLD",

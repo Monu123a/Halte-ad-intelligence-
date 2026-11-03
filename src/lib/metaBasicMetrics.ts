@@ -15,6 +15,20 @@ export interface StateBasicMetric {
   recommendedProducts: string[];
 }
 
+export interface MetaCampaignMetric {
+  id: string;
+  name: string;
+  objective: string;
+  brand: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  leads: number;
+  ctr: number;
+  cpc: number;
+  cpl: number;
+}
+
 export interface PresetBasicMetrics {
   reach: number;
   impressions: number;
@@ -25,6 +39,9 @@ export interface PresetBasicMetrics {
   leads: number;
   cpl: number;
   states: StateBasicMetric[];
+  campaigns: MetaCampaignMetric[];
+  allCampaigns: MetaCampaignMetric[];
+  totalCampaignsCount: number;
 }
 
 export interface MetaBasicMetricsReport {
@@ -60,7 +77,6 @@ function buildStateBreakdown(
   geoRows: any[]
 ): StateBasicMetric[] {
   if (geoRows.length === 0 || periodSpend <= 0) {
-    // Return empty / zeroed state templates from intelligence map
     return Object.entries(INDIAN_STATE_INTELLIGENCE).map(([name, intel]) => ({
       state: name,
       zone: intel.zone || "North",
@@ -157,9 +173,11 @@ export async function getMetaOverviewMetrics(customRange?: { from?: Date; to?: D
 
   const whereMeta = { adSet: { campaign: { adConnection: { platform: "META" as const } } } };
 
+  // Fetch campaign structure along with metrics and leads
   const [
     metaConn,
     allGeoRows,
+    metaCampaigns,
     agg7d,
     agg30d,
     agg90d,
@@ -169,7 +187,9 @@ export async function getMetaOverviewMetrics(customRange?: { from?: Date; to?: D
     leads30d,
     leads90d,
     leadsAll,
-    leadsCustom
+    leadsCustom,
+    dailyCampaignAggs,
+    leadsCampaignAggs
   ] = await Promise.all([
     prisma.adConnection.findFirst({
       where: { platform: "META" },
@@ -177,6 +197,16 @@ export async function getMetaOverviewMetrics(customRange?: { from?: Date; to?: D
       select: { lastSyncedAt: true }
     }),
     prisma.geoMetric.findMany(),
+    prisma.campaign.findMany({
+      where: { adConnection: { platform: "META" } },
+      select: {
+        id: true,
+        name: true,
+        objective: true,
+        brand: { select: { name: true } },
+        adSets: { select: { id: true } }
+      }
+    }),
     prisma.dailyMetric.aggregate({
       where: { ...whereMeta, date: { gte: d7 } },
       _sum: { spend: true, impressions: true, clicks: true }
@@ -219,8 +249,88 @@ export async function getMetaOverviewMetrics(customRange?: { from?: Date; to?: D
             tag: { not: "SPAM" }
           }
         })
-      : Promise.resolve(0)
+      : Promise.resolve(0),
+    // Campaign level breakdown for active timeframe
+    prisma.dailyMetric.groupBy({
+      by: ["adSetId"],
+      where: {
+        ...whereMeta,
+        date: customStart
+          ? { gte: customStart, ...(customEnd ? { lte: customEnd } : {}) }
+          : { gte: d30 }
+      },
+      _sum: { spend: true, impressions: true, clicks: true }
+    }),
+    prisma.lead.groupBy({
+      by: ["adSetId"],
+      where: {
+        tag: { not: "SPAM" },
+        adSetId: { not: null },
+        createdAt: customStart
+          ? { gte: customStart, ...(customEnd ? { lte: customEnd } : {}) }
+          : { gte: d30 }
+      },
+      _count: true
+    })
   ]);
+
+  // Build campaign level breakdown
+  const spendMap = new Map<string, number>();
+  const impMap = new Map<string, number>();
+  const clickMap = new Map<string, number>();
+  for (const m of dailyCampaignAggs) {
+    spendMap.set(m.adSetId, Number(m._sum.spend || 0));
+    impMap.set(m.adSetId, m._sum.impressions || 0);
+    clickMap.set(m.adSetId, m._sum.clicks || 0);
+  }
+
+  const leadMap = new Map<string, number>();
+  for (const l of leadsCampaignAggs) {
+    if (l.adSetId) leadMap.set(l.adSetId, l._count);
+  }
+
+  const activeCampList: MetaCampaignMetric[] = [];
+  const allCampList: MetaCampaignMetric[] = [];
+
+  for (const c of metaCampaigns) {
+    let cSpend = 0;
+    let cImp = 0;
+    let cClicks = 0;
+    let cLeads = 0;
+
+    for (const a of c.adSets) {
+      cSpend += spendMap.get(a.id) || 0;
+      cImp += impMap.get(a.id) || 0;
+      cClicks += clickMap.get(a.id) || 0;
+      cLeads += leadMap.get(a.id) || 0;
+    }
+
+    const ctr = cImp > 0 ? Math.round((cClicks / cImp) * 10000) / 100 : 0;
+    const cpc = cClicks > 0 ? Math.round((cSpend / cClicks) * 100) / 100 : 0;
+    const cpl = cLeads > 0 ? Math.round(cSpend / cLeads) : 0;
+
+    const metric: MetaCampaignMetric = {
+      id: c.id,
+      name: c.name,
+      objective: c.objective || "ENGAGEMENT",
+      brand: c.brand?.name || "Halte All",
+      spend: Math.round(cSpend),
+      impressions: cImp,
+      clicks: cClicks,
+      leads: cLeads,
+      ctr,
+      cpc,
+      cpl
+    };
+
+    allCampList.push(metric);
+    if (cSpend > 0 || cImp > 0) {
+      activeCampList.push(metric);
+    }
+  }
+
+  activeCampList.sort((a, b) => b.spend - a.spend);
+  allCampList.sort((a, b) => b.spend - a.spend || a.name.localeCompare(b.name));
 
   // Geo snapshot rows for proportional distribution
   const geoRowsAll = allGeoRows.filter(r => r.date.getTime() === new Date("2020-01-01T00:00:00.000Z").getTime());
@@ -254,7 +364,10 @@ export async function getMetaOverviewMetrics(customRange?: { from?: Date; to?: D
       cpc,
       leads,
       cpl,
-      states
+      states,
+      campaigns: activeCampList,
+      allCampaigns: allCampList,
+      totalCampaignsCount: metaCampaigns.length
     };
   };
 
@@ -267,7 +380,6 @@ export async function getMetaOverviewMetrics(customRange?: { from?: Date; to?: D
   };
 
   if (customStart) {
-    // Use the 30d/90d/all snapshot depending on duration of custom range
     const diffDays = customEnd ? Math.round((customEnd.getTime() - customStart.getTime()) / (1000 * 60 * 60 * 24)) : 30;
     const bestGeoRows = diffDays > 60
       ? (geoRows90d.length > 0 ? geoRows90d : geoRowsAll)

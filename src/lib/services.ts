@@ -118,6 +118,8 @@ export async function getDashboardRecommendations(
     prisma.$queryRaw<any[]>`
       SELECT 
         a.id as "adSetId",
+        a.name as "adSetName",
+        c.name as "campaignName",
         c."products",
         c."region",
         c."objective",
@@ -164,6 +166,8 @@ export async function getDashboardRecommendations(
 
   const stats: AdSetStats[] = rawRows.map((r) => ({
     adSetId: r.adSetId,
+    adSetName: r.adSetName || undefined,
+    campaignName: r.campaignName || undefined,
     spend: Number(r.spend || 0),
     clicks: Number(r.clicks || 0),
     genuineLeads: Number(r.genuineLeads || 0),

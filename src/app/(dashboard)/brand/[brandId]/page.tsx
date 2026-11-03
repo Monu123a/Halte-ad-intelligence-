@@ -25,7 +25,8 @@ async function getBrandData(brandName: string, currentMonthStr: string): Promise
   const allBrands = await prisma.brand.findMany({
     select: { id: true, name: true, pageId: true, isSeasonal: true, colorToken: true }
   });
-  const currentBrand = allBrands.find(b => b.name === brandName);
+  const normalizedBrandName = decodeURIComponent(brandName).trim().toLowerCase();
+  const currentBrand = allBrands.find(b => b.name.toLowerCase() === normalizedBrandName);
   const isSeasonal = currentBrand?.isSeasonal || false;
 
   const [year, month] = currentMonthStr.split("-").map(Number);
@@ -89,7 +90,7 @@ export default async function BrandReportPage({
     redirect("/leads");
   }
 
-  const brandName = params.brandId;
+  const brandName = decodeURIComponent(params.brandId);
   const currentMonthStr = searchParams.month || new Date().toISOString().substring(0, 7);
   const { currentBrand, isSeasonal, totalSpend, spendByRegion } = await getBrandData(brandName, currentMonthStr);
 
@@ -127,7 +128,7 @@ export default async function BrandReportPage({
   }
   
   const getTabClass = (tabName: string) => {
-    const isActive = tabName === brandName;
+    const isActive = tabName.toLowerCase() === brandName.toLowerCase();
     const base = "text-[13px] font-semibold py-[9px] px-[18px] border border-stone cursor-pointer transition-colors rounded-sm";
     
     if (!isActive) return `${base} bg-card text-ink-soft hover:bg-stone/20`;
