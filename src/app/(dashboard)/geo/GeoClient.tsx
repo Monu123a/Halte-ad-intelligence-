@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { GeoReportData, AggregatedGeoRow } from "@/lib/geoIntelligence";
+import { DateRangeSelector } from "@/components/DateRangeSelector";
 import {
   MapPin,
   Copy,
@@ -54,18 +55,9 @@ export function GeoClient({ initialData }: { initialData: GeoReportData }) {
 
   const handleBrandChange = (brand: string) => {
     setCurrentBrand(brand);
-    const params = new URLSearchParams();
+    const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
     if (brand !== "ALL") params.set("brand", brand);
-    if (currentPreset !== "all") params.set("timeRange", currentPreset);
-    const qs = params.toString();
-    router.push(qs ? `/geo?${qs}` : "/geo");
-  };
-
-  const handlePresetChange = (preset: "all" | "90d" | "30d") => {
-    setCurrentPreset(preset);
-    const params = new URLSearchParams();
-    if (currentBrand !== "ALL") params.set("brand", currentBrand);
-    if (preset !== "all") params.set("timeRange", preset);
+    else params.delete("brand");
     const qs = params.toString();
     router.push(qs ? `/geo?${qs}` : "/geo");
   };
@@ -162,39 +154,12 @@ export function GeoClient({ initialData }: { initialData: GeoReportData }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {/* Time Range Segmented Control */}
-          <div className="inline-flex items-center bg-stone/40 p-1 rounded-md border border-stone">
-            <button
-              onClick={() => handlePresetChange("all")}
-              className={`px-3.5 py-1.5 rounded text-[12px] font-medium transition-all ${
-                currentPreset === "all"
-                  ? "bg-card text-ink font-semibold shadow-2xs"
-                  : "text-ink-soft hover:text-ink"
-              }`}
-            >
-              All Time
-            </button>
-            <button
-              onClick={() => handlePresetChange("90d")}
-              className={`px-3.5 py-1.5 rounded text-[12px] font-medium transition-all ${
-                currentPreset === "90d"
-                  ? "bg-card text-ink font-semibold shadow-2xs"
-                  : "text-ink-soft hover:text-ink"
-              }`}
-            >
-              Last 90 Days
-            </button>
-            <button
-              onClick={() => handlePresetChange("30d")}
-              className={`px-3.5 py-1.5 rounded text-[12px] font-medium transition-all ${
-                currentPreset === "30d"
-                  ? "bg-card text-ink font-semibold shadow-2xs"
-                  : "text-ink-soft hover:text-ink"
-              }`}
-            >
-              Last 30 Days
-            </button>
-          </div>
+          {/* Global Date Range Selector with Custom Range & Presets */}
+          <DateRangeSelector
+            currentRange={currentPreset}
+            from={data.summary.from}
+            to={data.summary.to}
+          />
 
           {/* Refresh Insights Button */}
           <button
@@ -261,7 +226,17 @@ export function GeoClient({ initialData }: { initialData: GeoReportData }) {
           </div>
           <div className="text-[12.5px] text-ink-soft mt-1 font-medium">Total Regional Spend</div>
           <div className="text-[11px] text-stone-dark mt-2">
-            {currentBrand !== "ALL" ? `${currentBrand} attribution` : currentPreset === "all" ? "Historical investment" : currentPreset === "90d" ? "Past 90 days total" : "Past 30 days total"}
+            {currentBrand !== "ALL"
+              ? `${currentBrand} attribution`
+              : currentPreset === "all"
+              ? "Historical investment"
+              : currentPreset === "90d"
+              ? "Past 90 days total"
+              : currentPreset === "7d"
+              ? "Past 7 days total"
+              : currentPreset === "custom" && (data.summary.from || data.summary.to)
+              ? `${data.summary.from || "Start"} to ${data.summary.to || "Today"}`
+              : "Past 30 days total"}
           </div>
         </div>
 

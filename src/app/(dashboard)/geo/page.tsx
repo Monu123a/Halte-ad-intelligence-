@@ -13,23 +13,37 @@ export const metadata = {
 export default async function GeoIntelligencePage({
   searchParams,
 }: {
-  searchParams?: { timeRange?: string; brand?: string };
+  searchParams?: { timeRange?: string; range?: string; brand?: string; from?: string; to?: string };
 }) {
   const session = await getSession();
   if (session?.role === "LEAD_TAGGER") {
     redirect("/leads");
   }
 
+  const rangeParam = searchParams?.range || searchParams?.timeRange || "all";
   const validRange =
-    searchParams?.timeRange === "90d"
+    rangeParam === "7d"
+      ? "7d"
+      : rangeParam === "90d"
       ? "90d"
-      : searchParams?.timeRange === "30d"
+      : rangeParam === "30d"
       ? "30d"
+      : rangeParam === "custom"
+      ? "custom"
       : "all";
 
   const brand = searchParams?.brand || "ALL";
+  const from = searchParams?.from;
+  const to = searchParams?.to;
 
-  const report = await getGeographicalReport(validRange, brand);
+  const customRange = (validRange === "custom" && from)
+    ? {
+        from: new Date(from.includes("T") ? from : `${from}T00:00:00.000Z`),
+        to: to ? new Date(to.includes("T") ? to : `${to}T23:59:59.999Z`) : new Date(new Date().setHours(23, 59, 59, 999))
+      }
+    : undefined;
+
+  const report = await getGeographicalReport(validRange, brand, customRange);
 
   return <GeoClient initialData={report} />;
 }

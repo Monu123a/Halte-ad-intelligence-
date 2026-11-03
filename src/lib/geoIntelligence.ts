@@ -379,6 +379,8 @@ export interface GeoReportData {
     totalStatesActive: number;
     selectedTimeRange: string;
     selectedBrand: string;
+    from?: string;
+    to?: string;
     brandCounts: {
       ALL: number;
       Gardena: number;
@@ -479,10 +481,16 @@ export function invalidateGeoReportCache() {
 }
 
 export async function getGeographicalReport(
-  timeRange: "all" | "90d" | "30d" = "all",
-  brandFilter: string = "ALL"
+  timeRange: "all" | "90d" | "30d" | "7d" | "custom" = "all",
+  brandFilter: string = "ALL",
+  customRange?: { from?: Date; to?: Date }
 ): Promise<GeoReportData> {
-  const cacheKey = `${timeRange}_${brandFilter}`;
+  const customStart = customRange?.from;
+  const customEnd = customRange?.to;
+
+  const cacheKey = customStart
+    ? `geo_custom_${customStart.toISOString()}_${customEnd?.toISOString()}_${brandFilter}`
+    : `geo_${timeRange}_${brandFilter}`;
   const nowMs = Date.now();
   const cached = geoReportCache.get(cacheKey);
   if (cached && nowMs < cached.expiresAt) {
@@ -492,8 +500,11 @@ export async function getGeographicalReport(
   let targetDate = new Date("2020-01-01T00:00:00.000Z");
   if (timeRange === "90d") {
     targetDate = new Date("2026-07-01T00:00:00.000Z");
-  } else if (timeRange === "30d") {
+  } else if (timeRange === "30d" || timeRange === "7d") {
     targetDate = new Date("2026-10-01T00:00:00.000Z");
+  } else if (timeRange === "custom" && customStart) {
+    const diffDays = customEnd ? Math.round((customEnd.getTime() - customStart.getTime()) / (1000 * 60 * 60 * 24)) : 30;
+    targetDate = diffDays > 60 ? new Date("2026-07-01T00:00:00.000Z") : new Date("2026-10-01T00:00:00.000Z");
   }
 
   // Fetch metrics matching date
@@ -511,8 +522,27 @@ export async function getGeographicalReport(
     }
   }
 
-  // Fetch WhatsApp leads to compute direct attribution by state and by brand
+  const liveDateFilter = customStart
+    ? { gte: customStart, ...(customEnd ? { lte: customEnd } : {}) }
+    : timeRange === "7d"
+    ? { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+    : null;
+
+  // If live date range (7d or custom), query live spend from DailyMetric to proportionally scale
+  let livePeriodSpend: number | null = null;
+  if (liveDateFilter) {
+    const liveAgg = await prisma.dailyMetric.aggregate({
+      where: { date: liveDateFilter },
+      _sum: { spend: true }
+    });
+    if (liveAgg._sum.spend) {
+      livePeriodSpend = Number(liveAgg._sum.spend);
+    }
+  }
+
+  // Fetch WhatsApp leads matching time range if specified
   const allLeads = await prisma.lead.findMany({
+    where: liveDateFilter ? { createdAt: liveDateFilter } : undefined,
     select: {
       contactRef: true,
       adSet: {
@@ -593,6 +623,12 @@ export async function getGeographicalReport(
   };
   const multiplier = brandSpendMultiplier[brandFilter] ?? 1.0;
 
+  // Proportional time-scaling for custom or live periods
+  const rawSnapshotSpend = metrics.reduce((acc, m) => acc + Number(m.spend), 0);
+  const timeScale = (livePeriodSpend !== null && livePeriodSpend > 0 && rawSnapshotSpend > 0)
+    ? (livePeriodSpend / rawSnapshotSpend)
+    : 1.0;
+
   // Aggregate by state
   const stateMap: Record<string, { spend: number; leads: number }> = {};
   let totalSpend = 0;
@@ -603,8 +639,8 @@ export async function getGeographicalReport(
     if (!stateMap[s]) {
       stateMap[s] = { spend: 0, leads: 0 };
     }
-    const spend = Number(m.spend) * multiplier;
-    const leads = Math.round((m.firstReplies + m.leads + m.conversations) * multiplier);
+    const spend = Number(m.spend) * multiplier * timeScale;
+    const leads = Math.round((m.firstReplies + m.leads + m.conversations) * multiplier * timeScale);
 
     stateMap[s].spend += spend;
     stateMap[s].leads += leads;
@@ -705,6 +741,8 @@ export async function getGeographicalReport(
       totalStatesActive: states.length,
       selectedTimeRange: timeRange,
       selectedBrand: brandFilter,
+      from: customStart ? customStart.toISOString().split("T")[0] : undefined,
+      to: customEnd ? customEnd.toISOString().split("T")[0] : undefined,
       brandCounts: {
         ALL: brandCounts.ALL || 0,
         Gardena: brandCounts.Gardena || 0,
