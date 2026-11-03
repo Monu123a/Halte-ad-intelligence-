@@ -163,6 +163,26 @@ You are fine-tuned specifically for Halte's exact product lines, business models
     Columns: "Order Id", "Invoice Number", "Invoice Date", "Buyer Name", "Customer Bill To Gstid", "Item Description", "Invoice Amount", Quantity, BRAND
     Example: SELECT "Order Id", "Invoice Number", "Buyer Name", "Item Description", "Invoice Amount" FROM "PowerBISales" WHERE "Buyer Name" ILIKE '%yantra%'
 
+=== CRITICAL CONVERSATION CONTINUITY & ENTITY MEMORY RULES ===
+* Always maintain the conversational entity across turns:
+  - If previous conversation turns discussed a specific product, SKU, brand, customer, or order (e.g. 'Gardena RollUp Hose', 'BKR Brush Cutter', 'LG1152', 'LG0408', 'Yantratools', or a specific order/cart):
+  - And the user asks follow-up questions such as:
+    - "top states of sales" / "which states?"
+    - "cancellations" / "how many returned?"
+    - "profit margin" / "unit cost?"
+    - "who bought this?" / "customer phone numbers?"
+    - "monthly trend" / "orders today"
+  - You MUST strictly apply the filter for THAT SPECIFIC PRODUCT, SKU, OR ENTITY in your SQL query!
+    Example: If previous turn was about 'LG1152' or 'BKR Lawn Mower', and the user now asks "top states of sales", write:
+    SELECT ship_state, COUNT(*) as orders_count, SUM(item_price * quantity) as revenue 
+    FROM orders 
+    WHERE (sku ILIKE '%LG1152%' OR sku ILIKE '%Lawn Mower%')
+    GROUP BY ship_state 
+    ORDER BY revenue DESC 
+    LIMIT 5;
+  - DO NOT default to overall store sales when the user asks a follow-up question about a product or topic discussed earlier in the conversation!
+  - In your response, explicitly confirm the entity: "For [Product/SKU], the top states by sales are...".
+
 You have REAL-TIME LIVE READ ACCESS to all connected databases and marketing systems:
 
 === 1. HALTE PRODUCTION STORE DATABASE (Real Orders & Customers) ===
@@ -250,14 +270,63 @@ ${(storeData?.recentCustomers || []).slice(0, 3).map((c: any) => `  - ${c.name} 
       }
     ];
 
-    // Format conversation history for Gemini
-    const contents: any[] = [];
-    contents.push({
-      role: "user",
-      parts: [{ text: systemContext + "\n\nUser Question: " + userMessage }]
-    });
+    // Format conversation history for Gemini with full multi-turn memory
+    const rawHistory = Array.isArray(body.history) ? body.history : [];
+    const pastTurns: Array<{ role: "user" | "model"; text: string }> = [];
 
-    const candidateModels = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
+    if (rawHistory.length > 0) {
+      for (const item of rawHistory) {
+        const text = (item.text || item.content || "").trim();
+        if (!text || text.startsWith("Hello! I am your Halte")) continue;
+        const role = (item.role === "assistant" || item.role === "model") ? "model" : "user";
+        pastTurns.push({ role, text });
+      }
+    } else if (dbSessionId) {
+      const dbMsgs = await prisma.aIChatMessage.findMany({
+        where: { sessionId: dbSessionId },
+        orderBy: { createdAt: "asc" },
+        take: 20
+      });
+      for (const m of dbMsgs) {
+        const text = m.content.trim();
+        if (!text || text.startsWith("Hello! I am your Halte")) continue;
+        const role = m.role === "assistant" ? "model" : "user";
+        pastTurns.push({ role, text });
+      }
+    }
+
+    // Strip trailing message if it duplicates userMessage
+    if (pastTurns.length > 0 && pastTurns[pastTurns.length - 1].role === "user" && pastTurns[pastTurns.length - 1].text === userMessage) {
+      pastTurns.pop();
+    }
+
+    // Build valid alternating turns for Gemini: user -> model -> user -> model ...
+    const contents: any[] = [];
+    for (const turn of pastTurns) {
+      if (contents.length === 0) {
+        if (turn.role === "user") {
+          contents.push({ role: "user", parts: [{ text: turn.text }] });
+        }
+      } else {
+        const lastRole = contents[contents.length - 1].role;
+        if (turn.role !== lastRole) {
+          contents.push({ role: turn.role, parts: [{ text: turn.text }] });
+        } else {
+          // Merge identical consecutive roles
+          const prevText = contents[contents.length - 1].parts[0].text;
+          contents[contents.length - 1].parts[0].text = `${prevText}\n\n${turn.text}`;
+        }
+      }
+    }
+
+    // Finally append the current userMessage
+    if (contents.length > 0 && contents[contents.length - 1].role === "user") {
+      contents[contents.length - 1].parts[0].text += `\n\n${userMessage}`;
+    } else {
+      contents.push({ role: "user", parts: [{ text: userMessage }] });
+    }
+
+    const candidateModels = ["gemini-2.5-flash", "gemini-3.5-flash"];
 
     const executeGeminiCall = async (payloadContents: any[], includeTools: boolean = true) => {
       let lastError = "";
@@ -265,9 +334,10 @@ ${(storeData?.recentCustomers || []).slice(0, 3).map((c: any) => `  - ${c.name} 
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
         try {
           const bodyPayload: any = {
+            system_instruction: { parts: [{ text: systemContext }] },
             contents: payloadContents,
             generationConfig: {
-              temperature: 0.3,
+              temperature: 0.2,
               maxOutputTokens: 3500
             }
           };

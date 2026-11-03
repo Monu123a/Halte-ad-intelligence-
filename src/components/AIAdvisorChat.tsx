@@ -275,9 +275,10 @@ I am directly connected to your **Halte Production Store Database** (${totalOrde
     setIsLoading(true);
 
     try {
-      const historyPayload = updatedMessagesWithUser
-        .filter((m) => m.id !== "welcome-1")
-        .slice(-6)
+      // Send past conversation turns (excluding welcome message, keeping up to 14 turns)
+      const historyPayload = messages
+        .filter((m) => m.id !== "welcome-1" && !m.content.startsWith("Hello! I am your Halte"))
+        .slice(-14)
         .map((m) => ({
           role: m.role === "assistant" ? "model" : "user",
           text: m.content
