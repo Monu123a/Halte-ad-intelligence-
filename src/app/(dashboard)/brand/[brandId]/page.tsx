@@ -33,8 +33,8 @@ async function getBrandData(brandName: string, currentMonthStr: string): Promise
   const isSeasonal = currentBrand?.isSeasonal || false;
 
   const [year, month] = currentMonthStr.split("-").map(Number);
-  const startDate = new Date(year, month - 1, 1);
-  const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+  const startDate = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
+  const endDate = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
 
   let totalSpend = 0;
   const spendByRegion: Record<string, number> = {};
