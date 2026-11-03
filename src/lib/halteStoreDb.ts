@@ -63,7 +63,7 @@ export async function getStoreMetricsSummary(): Promise<StoreStatsSummary> {
 
   try {
     const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("HalteStoreDB query timeout after 2500ms")), 2500)
+      setTimeout(() => reject(new Error("HalteStoreDB query timeout after 6000ms")), 6000)
     );
 
     const [statsRes, custCountRes, topStatesRes, topSkusRes, topCustRes] = await Promise.race([

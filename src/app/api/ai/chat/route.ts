@@ -60,7 +60,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
     }
 
-    const userSession = await getSession();
+    let userSession = null;
+    try {
+      userSession = await getSession();
+    } catch {
+      // outside cookie request scope or unauthenticated
+    }
     const userId = userSession?.id;
     const clientSessionId = body.sessionId;
     let dbSessionId = clientSessionId;
@@ -254,7 +259,7 @@ ${(storeData?.recentCustomers || []).slice(0, 3).map((c: any) => `  - ${c.name} 
           },
           {
             name: "query_ads_and_telemetry_database",
-            description: "Executes a safe read-only SELECT query on the Halte Ad Intelligence & Telemetry Database. Tables available: 'AbandonedCart' (id, customerName, customerEmail, customerPhone, city, state, zipCode, cartValue, itemCount, items, status, createdAt), 'WebsiteAnalytics' (id, pagePath, pageTitle, brand, referrer, deviceType, timeSpentSec, maxScrollPct, clicksCount, isExit, createdAt), 'DailyMetric' (id, adSetId, date, spend, impressions, clicks, rawResponse), 'Campaign' (id, name, objective, format, region, products).",
+            description: "Executes a safe read-only SELECT query on the Halte Ad Intelligence & Telemetry Database. Tables available: 'AbandonedCart' (id, customerName, customerEmail, customerPhone, phoneRaw, city, state, zipCode, cartValue, itemCount, items, status, createdAt) -> USE THIS FOR ABANDONED CARTS PHONE/EMAIL LOOKUP (e.g. SELECT * FROM \"AbandonedCart\" WHERE \"customerPhone\" LIKE '%9660253109%' OR \"customerEmail\" ILIKE '%...%'); 'Lead' (id, phone, senderName, messageText, tag, brand, receivingChannel, createdAt) -> USE THIS FOR INBOUND WHATSAPP & INSTAGRAM LEADS PHONE/CUSTOMER LOOKUP (e.g. SELECT * FROM \"Lead\" WHERE phone LIKE '%...%'); 'WebsiteAnalytics' (id, pagePath, pageTitle, brand, referrer, deviceType, timeSpentSec, maxScrollPct, clicksCount, isExit, createdAt); 'DailyMetric' (id, adSetId, date, spend, impressions, clicks, rawResponse); 'Campaign' (id, name, objective, format, region, products).",
             parameters: {
               type: "OBJECT",
               properties: {
