@@ -15,12 +15,20 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const range = (searchParams.get("range") || "30d") as "30d" | "90d" | "all";
+    const range = searchParams.get("range") || "30d";
+    const from = searchParams.get("from");
+    const to = searchParams.get("to");
+    const customRange = (range === "custom" && from)
+      ? {
+          from: new Date(from.includes("T") ? from : `${from}T00:00:00.000Z`),
+          to: to ? new Date(to.includes("T") ? to : `${to}T23:59:59.999Z`) : new Date(new Date().setHours(23, 59, 59, 999))
+        }
+      : undefined;
 
     const [metaData, googleData, amazonData] = await Promise.all([
-      getMetaOverviewMetrics(),
-      getGoogleOverviewMetrics(),
-      getAmazonOverviewMetrics()
+      getMetaOverviewMetrics(customRange),
+      getGoogleOverviewMetrics(customRange),
+      getAmazonOverviewMetrics(customRange)
     ]);
 
     const metaPreset = (metaData as any)[range] || (metaData as any)["30d"];

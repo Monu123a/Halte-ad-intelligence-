@@ -42,7 +42,10 @@ async function OverviewContent({
   const filter = searchParams.filter;
 
   const customRange = (range === "custom" && from)
-    ? { from: new Date(from), to: to ? new Date(to) : undefined }
+    ? {
+        from: new Date(from.includes("T") ? from : `${from}T00:00:00.000Z`),
+        to: to ? new Date(to.includes("T") ? to : `${to}T23:59:59.999Z`) : new Date(new Date().setHours(23, 59, 59, 999))
+      }
     : undefined;
 
   const [recommendationsRaw, stats, webOverview, brands, metaBasicMetrics, googleBasicMetrics, amazonBasicMetrics, syncTimeline] = await Promise.all([
@@ -97,15 +100,29 @@ async function OverviewContent({
   const pagedRecommendations = recommendations.slice((page - 1) * pageSize, page * pageSize);
   const pagedAdSetIds = pagedRecommendations.map((r: any) => r.adSetId);
 
-  const [adSets, metricsAgg] = await Promise.all([
+  const cutoff = customRange?.from 
+    ? customRange.from 
+    : range === "7d" 
+    ? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+    : range === "90d"
+    ? new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
+    : range === "all"
+    ? new Date("2020-01-01T00:00:00.000Z")
+    : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
+  const endCutoff = customRange?.to || new Date();
+
+  const [adSets, metricsAgg] = await Promise.all([
     prisma.adSet.findMany({
       where: { id: { in: pagedAdSetIds } },
       include: { campaign: { include: { adConnection: true } } }
     }),
     prisma.dailyMetric.groupBy({
       by: ['adSetId'],
-      where: { adSetId: { in: pagedAdSetIds } },
+      where: {
+        adSetId: { in: pagedAdSetIds },
+        ...(range === "all" ? {} : { date: { gte: cutoff, lte: endCutoff } })
+      },
       _sum: { spend: true }
     })
   ]);

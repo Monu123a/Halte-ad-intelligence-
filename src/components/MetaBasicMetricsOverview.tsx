@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { MetaBasicMetricsReport, StateBasicMetric } from "@/lib/metaBasicMetrics";
@@ -81,10 +81,15 @@ export function MetaBasicMetricsOverview({
   } | null>(null);
   const [isAiLoading, setIsAiLoading] = useState<boolean>(false);
 
-  const fetchAiStrategy = async (rangeKey: string) => {
+  const fetchAiStrategy = useCallback(async (rangeKey: string) => {
     setIsAiLoading(true);
     try {
-      const res = await fetch(`/api/ai/strategy?range=${rangeKey}`);
+      const fromParam = searchParams.get("from");
+      const toParam = searchParams.get("to");
+      const query = rangeKey === "custom" && fromParam
+        ? `range=custom&from=${encodeURIComponent(fromParam)}${toParam ? `&to=${encodeURIComponent(toParam)}` : ""}`
+        : `range=${rangeKey}`;
+      const res = await fetch(`/api/ai/strategy?${query}`);
       if (res.ok) {
         const json = await res.json();
         setAiStrategy({
@@ -99,11 +104,11 @@ export function MetaBasicMetricsOverview({
     } finally {
       setIsAiLoading(false);
     }
-  };
+  }, [searchParams]);
 
   useEffect(() => {
     fetchAiStrategy(selectedTimeRange);
-  }, [selectedTimeRange]);
+  }, [selectedTimeRange, fetchAiStrategy]);
 
   useEffect(() => {
     if (initialTimeRange) {
@@ -129,6 +134,11 @@ export function MetaBasicMetricsOverview({
     const params = new URLSearchParams(searchParams.toString());
     params.set("range", rangeKey);
     params.set("platform", selectedPlatform);
+    params.delete("page");
+    if (rangeKey !== "custom") {
+      params.delete("from");
+      params.delete("to");
+    }
     router.replace(`?${params.toString()}`, { scroll: false });
   };
 
@@ -160,7 +170,7 @@ export function MetaBasicMetricsOverview({
     }
   };
 
-  const currentPresetData = (data as any)?.[selectedTimeRange] || data?.["30d"] || data?.all || { spend: 0, impressions: 0, clicks: 0, ctr: 0, cpc: 0, leads: 0, cpl: 0, reach: 0, states: [] };
+  const currentPresetData = (data as any)?.[selectedTimeRange] ?? data?.["30d"] ?? data?.all ?? { spend: 0, impressions: 0, clicks: 0, ctr: 0, cpc: 0, leads: 0, cpl: 0, reach: 0, states: [] };
   const states: StateBasicMetric[] = currentPresetData?.states || [];
 
   // Selected state data (if specific state chosen)
@@ -382,7 +392,7 @@ export function MetaBasicMetricsOverview({
                 </button>
                 {selectedTimeRange === "custom" && (
                   <span className="px-3 py-1 rounded text-[11.5px] font-semibold bg-slate text-white">
-                    Custom Range
+                    {searchParams.get("from") ? `Custom (${searchParams.get("from")}${searchParams.get("to") ? ` to ${searchParams.get("to")}` : ""})` : "Custom Range"}
                   </span>
                 )}
               </div>
@@ -412,7 +422,20 @@ export function MetaBasicMetricsOverview({
 
           {/* 6 Basic Google Metrics KPI Grid */}
           {(() => {
-            const googlePreset = (googleData as any)?.[selectedTimeRange] || googleData?.["90d"] || googleData?.["30d"] || (googleData as any)?.all;
+            const googlePreset = (googleData as any)?.[selectedTimeRange] ?? googleData?.["30d"] ?? (googleData as any)?.all ?? {
+              spend: 0,
+              impressions: 0,
+              clicks: 0,
+              conversions: 0,
+              ctr: 0,
+              cpc: 0,
+              avgIS: null,
+              avgLostBudget: null,
+              avgLostRank: null,
+              totalCampaignsCount: googleData?.all?.totalCampaignsCount || 0,
+              campaigns: [],
+              allCampaigns: googleData?.all?.allCampaigns || []
+            };
             return (
               <>
                 <div className="grid grid-cols-2 md:grid-cols-6 gap-[1px] bg-stone border border-stone rounded-md overflow-hidden">
@@ -788,9 +811,22 @@ export function MetaBasicMetricsOverview({
       ) : selectedPlatform === "AMAZON" ? (
         <div className="pt-5 space-y-6">
           {/* If Amazon has connected metrics and campaigns */}
-          {amazonData && amazonData.status === "CONNECTED" && ((((amazonData as any)?.[selectedTimeRange] || amazonData["30d"])?.campaigns?.length > 0) || (((amazonData as any)?.[selectedTimeRange] || amazonData["30d"])?.spend > 0)) ? (
+          {amazonData && (amazonData.status === "CONNECTED" || (amazonData.all?.totalCampaignsCount || 0) > 0 || (amazonData.all?.spend || 0) > 0) ? (
             (() => {
-              const amazonPreset = (amazonData as any)?.[selectedTimeRange] || amazonData["30d"] || amazonData["90d"] || (amazonData as any)?.all;
+              const amazonPreset = (amazonData as any)?.[selectedTimeRange] ?? amazonData["30d"] ?? (amazonData as any)?.all ?? {
+                spend: 0,
+                impressions: 0,
+                clicks: 0,
+                orders: 0,
+                sales: 0,
+                ctr: 0,
+                cpc: 0,
+                acos: null,
+                roas: null,
+                totalCampaignsCount: amazonData.all?.totalCampaignsCount || 0,
+                campaigns: [],
+                allCampaigns: amazonData.all?.allCampaigns || []
+              };
               const filteredCampaigns = (amazonCampaignMode === "ACTIVE"
                 ? amazonPreset?.campaigns || []
                 : amazonPreset?.allCampaigns || []
@@ -854,7 +890,7 @@ export function MetaBasicMetricsOverview({
                         </button>
                         {selectedTimeRange === "custom" && (
                           <span className="px-3 py-1 rounded text-[11.5px] font-semibold bg-slate text-white">
-                            Custom Range
+                            {searchParams.get("from") ? `Custom (${searchParams.get("from")}${searchParams.get("to") ? ` to ${searchParams.get("to")}` : ""})` : "Custom Range"}
                           </span>
                         )}
                       </div>
@@ -897,6 +933,23 @@ export function MetaBasicMetricsOverview({
                     }`}>
                       {uploadAmazonStatus.success ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertTriangle className="w-4 h-4 shrink-0" />}
                       <span>{uploadAmazonStatus.message}</span>
+                    </div>
+                  )}
+
+                  {amazonPreset.spend === 0 && (
+                    <div className="bg-[#FEF5E6] border border-[#FF9900]/30 rounded p-3 text-[12px] flex flex-wrap items-center justify-between gap-2 text-ink">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-[#FF9900] shrink-0" />
+                        <span>
+                          No Amazon ad spend recorded in this period (<strong>{selectedTimeRange === "custom" && searchParams.get("from") ? `${searchParams.get("from")} to ${searchParams.get("to") || "today"}` : selectedTimeRange}</strong>). Synced ad reports currently cover {syncTimeline?.platforms.AMAZON.dataThroughDate ? new Date(syncTimeline.platforms.AMAZON.dataThroughDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "the uploaded batch"}.
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleTimeRangeChange("all")}
+                        className="text-[11.5px] font-semibold text-[#FF9900] underline hover:text-[#e08500] shrink-0"
+                      >
+                        View All Synced Data &rarr;
+                      </button>
                     </div>
                   )}
 
@@ -1411,7 +1464,7 @@ export function MetaBasicMetricsOverview({
                 </button>
                 {selectedTimeRange === "custom" && (
                   <span className="px-3 py-1 rounded text-[11.5px] font-semibold bg-slate text-white">
-                    Custom Range
+                    {searchParams.get("from") ? `Custom (${searchParams.get("from")}${searchParams.get("to") ? ` to ${searchParams.get("to")}` : ""})` : "Custom Range"}
                   </span>
                 )}
               </div>
@@ -1513,7 +1566,7 @@ export function MetaBasicMetricsOverview({
                 ₹{displaySpend.toLocaleString()}
               </div>
               <div className="text-[11px] text-stone-dark mt-1">
-                {selectedTimeRange === "all" ? "Historical spend" : selectedTimeRange === "90d" ? "Past 90 days" : "Past 30 days"}
+                {selectedTimeRange === "all" ? "Historical spend" : selectedTimeRange === "90d" ? "Past 90 days" : selectedTimeRange === "7d" ? "Past 7 days" : selectedTimeRange === "custom" && searchParams.get("from") ? `${searchParams.get("from")}${searchParams.get("to") ? ` to ${searchParams.get("to")}` : ""}` : "Past 30 days"}
               </div>
             </div>
 

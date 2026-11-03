@@ -55,6 +55,7 @@ export function DateRangeSelector({
   const buildUrl = (rangeKey: string, customFrom?: string, customTo?: string) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("range", rangeKey);
+    params.delete("page");
     
     if (rangeKey === "custom" && customFrom) {
       params.set("from", customFrom);

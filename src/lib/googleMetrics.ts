@@ -112,7 +112,7 @@ export async function getGoogleOverviewMetrics(customRange?: { from?: Date; to?:
   if (customRange?.from) {
     dateRanges["custom"] = {
       start: customRange.from,
-      end: customRange.to ? new Date(new Date(customRange.to).setHours(23, 59, 59, 999)) : undefined
+      end: customRange.to ? new Date(customRange.to) : undefined
     };
   }
 

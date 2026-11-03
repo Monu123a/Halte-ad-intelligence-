@@ -19,7 +19,7 @@ export async function GET(req: Request) {
 
   try {
     const connections = await prisma.adConnection.findMany({
-      where: { isEnabled: true, status: { not: "DISCONNECTED" } }
+      where: { isEnabled: true }
     });
 
     const results: any[] = [];

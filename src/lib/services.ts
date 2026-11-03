@@ -111,7 +111,7 @@ export async function getDashboardRecommendations(
     : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
   const endCutoff = customRange?.to
-    ? new Date(new Date(customRange.to).setHours(23, 59, 59, 999))
+    ? new Date(customRange.to)
     : new Date();
 
   const [rawRows, seasonalRules] = await Promise.all([
@@ -333,7 +333,7 @@ export async function getOverviewStats(range: string = "30d", customRange?: { fr
   if (customRange?.from) {
     dateFilter = {
       gte: customRange.from,
-      ...(customRange.to ? { lte: new Date(new Date(customRange.to).setHours(23, 59, 59, 999)) } : {})
+      ...(customRange.to ? { lte: new Date(customRange.to) } : {})
     };
   } else if (range === "7d") {
     dateFilter = { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) };

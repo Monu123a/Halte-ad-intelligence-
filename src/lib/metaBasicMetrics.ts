@@ -32,169 +32,253 @@ export interface MetaBasicMetricsReport {
   all: PresetBasicMetrics;
   "90d": PresetBasicMetrics;
   "30d": PresetBasicMetrics;
-  "7d"?: PresetBasicMetrics;
+  "7d": PresetBasicMetrics;
   custom?: PresetBasicMetrics;
   [key: string]: any;
 }
 
-const PRESET_DATES = {
-  all: new Date("2020-01-01T00:00:00.000Z"),
-  "90d": new Date("2026-07-01T00:00:00.000Z"),
-  "30d": new Date("2026-10-01T00:00:00.000Z")
-};
-
-// De-duplicated verified reach across all active accounts from Meta Insights API
-const VERIFIED_REACH_MAP = {
+// De-duplicated verified reach baseline across active accounts from Meta Insights API
+const VERIFIED_REACH_MAP: Record<string, number> = {
   all: 85988552,
   "90d": 14809740,
   "30d": 5640910,
   "7d": 1420200
 };
 
-// 5-minute memory cache to prevent heavy round trips
+// 3-minute memory cache for default presets (cleared on sync or custom queries)
 let metaMetricsCache: { data: MetaBasicMetricsReport; expiresAt: number } | null = null;
 
 export function invalidateMetaMetricsCache() {
   metaMetricsCache = null;
 }
 
+function buildStateBreakdown(
+  periodSpend: number,
+  periodImp: number,
+  periodClicks: number,
+  periodLeads: number,
+  geoRows: any[]
+): StateBasicMetric[] {
+  if (geoRows.length === 0 || periodSpend <= 0) {
+    // Return empty / zeroed state templates from intelligence map
+    return Object.entries(INDIAN_STATE_INTELLIGENCE).map(([name, intel]) => ({
+      state: name,
+      zone: intel.zone || "North",
+      spend: 0,
+      impressions: 0,
+      clicks: 0,
+      leads: 0,
+      cpl: 0,
+      ctr: 0,
+      cpc: 0,
+      topDistricts: intel.topDistricts || [],
+      recommendedProducts: intel.recommendedProducts || []
+    }));
+  }
+
+  const statesMap: Record<string, { spend: number; impressions: number; clicks: number; leads: number }> = {};
+  let totalGeoSpend = 0;
+  let totalGeoImp = 0;
+  let totalGeoClicks = 0;
+  let totalGeoLeads = 0;
+
+  for (const r of geoRows) {
+    const s = Number(r.spend);
+    const l = r.firstReplies + r.leads + r.conversations;
+    totalGeoSpend += s;
+    totalGeoImp += r.impressions;
+    totalGeoClicks += r.clicks;
+    totalGeoLeads += l;
+
+    if (!statesMap[r.region]) {
+      statesMap[r.region] = { spend: 0, impressions: 0, clicks: 0, leads: 0 };
+    }
+    statesMap[r.region].spend += s;
+    statesMap[r.region].impressions += r.impressions;
+    statesMap[r.region].clicks += r.clicks;
+    statesMap[r.region].leads += l;
+  }
+
+  const safeTotalGeoSpend = totalGeoSpend > 0 ? totalGeoSpend : 1;
+  const safeTotalGeoImp = totalGeoImp > 0 ? totalGeoImp : 1;
+  const safeTotalGeoClicks = totalGeoClicks > 0 ? totalGeoClicks : 1;
+  const safeTotalGeoLeads = totalGeoLeads > 0 ? totalGeoLeads : 1;
+
+  const stateList: StateBasicMetric[] = Object.entries(statesMap)
+    .filter(([name]) => INDIAN_STATE_INTELLIGENCE[name] || statesMap[name].spend > 0)
+    .map(([name, s]) => {
+      const intel = INDIAN_STATE_INTELLIGENCE[name];
+      const spendShare = s.spend / safeTotalGeoSpend;
+      const impShare = s.impressions / safeTotalGeoImp;
+      const clicksShare = s.clicks / safeTotalGeoClicks;
+      const leadsShare = totalGeoLeads > 0 ? (s.leads / safeTotalGeoLeads) : spendShare;
+
+      const stateSpend = Math.round(periodSpend * spendShare);
+      const stateImp = Math.round(periodImp * impShare);
+      const stateClicks = Math.round(periodClicks * clicksShare);
+      const stateLeads = periodLeads > 0 ? Math.round(periodLeads * leadsShare) : 0;
+
+      const ctr = stateImp > 0 ? Math.round((stateClicks / stateImp) * 10000) / 100 : 0;
+      const cpc = stateClicks > 0 ? Math.round((stateSpend / stateClicks) * 100) / 100 : 0;
+      const cpl = stateLeads > 0 ? Math.round(stateSpend / stateLeads) : 0;
+
+      return {
+        state: name,
+        zone: intel?.zone || "North",
+        spend: stateSpend,
+        impressions: stateImp,
+        clicks: stateClicks,
+        leads: stateLeads,
+        cpl,
+        ctr,
+        cpc,
+        topDistricts: intel?.topDistricts || [],
+        recommendedProducts: intel?.recommendedProducts || []
+      };
+    })
+    .sort((a, b) => b.spend - a.spend);
+
+  return stateList;
+}
+
 export async function getMetaOverviewMetrics(customRange?: { from?: Date; to?: Date }): Promise<MetaBasicMetricsReport> {
-  const now = Date.now();
-  if (!customRange?.from && metaMetricsCache && now < metaMetricsCache.expiresAt) {
+  const nowMs = Date.now();
+  if (!customRange?.from && metaMetricsCache && nowMs < metaMetricsCache.expiresAt) {
     return metaMetricsCache.data;
   }
 
-  const [metaConn, allRows] = await Promise.all([
+  const now = new Date();
+  const d7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const d30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const d90 = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+  const customStart = customRange?.from ? new Date(customRange.from) : undefined;
+  const customEnd = customRange?.to ? new Date(customRange.to) : undefined;
+
+  const whereMeta = { adSet: { campaign: { adConnection: { platform: "META" as const } } } };
+
+  const [
+    metaConn,
+    allGeoRows,
+    agg7d,
+    agg30d,
+    agg90d,
+    aggAll,
+    aggCustom,
+    leads7d,
+    leads30d,
+    leads90d,
+    leadsAll,
+    leadsCustom
+  ] = await Promise.all([
     prisma.adConnection.findFirst({
       where: { platform: "META" },
       orderBy: { lastSyncedAt: "desc" },
       select: { lastSyncedAt: true }
     }),
-    prisma.geoMetric.findMany()
+    prisma.geoMetric.findMany(),
+    prisma.dailyMetric.aggregate({
+      where: { ...whereMeta, date: { gte: d7 } },
+      _sum: { spend: true, impressions: true, clicks: true }
+    }),
+    prisma.dailyMetric.aggregate({
+      where: { ...whereMeta, date: { gte: d30 } },
+      _sum: { spend: true, impressions: true, clicks: true }
+    }),
+    prisma.dailyMetric.aggregate({
+      where: { ...whereMeta, date: { gte: d90 } },
+      _sum: { spend: true, impressions: true, clicks: true }
+    }),
+    prisma.dailyMetric.aggregate({
+      where: whereMeta,
+      _sum: { spend: true, impressions: true, clicks: true }
+    }),
+    customStart
+      ? prisma.dailyMetric.aggregate({
+          where: {
+            ...whereMeta,
+            date: {
+              gte: customStart,
+              ...(customEnd ? { lte: customEnd } : {})
+            }
+          },
+          _sum: { spend: true, impressions: true, clicks: true }
+        })
+      : Promise.resolve({ _sum: { spend: null, impressions: null, clicks: null } }),
+    prisma.lead.count({ where: { createdAt: { gte: d7 }, tag: { not: "SPAM" } } }),
+    prisma.lead.count({ where: { createdAt: { gte: d30 }, tag: { not: "SPAM" } } }),
+    prisma.lead.count({ where: { createdAt: { gte: d90 }, tag: { not: "SPAM" } } }),
+    prisma.lead.count({ where: { tag: { not: "SPAM" } } }),
+    customStart
+      ? prisma.lead.count({
+          where: {
+            createdAt: {
+              gte: customStart,
+              ...(customEnd ? { lte: customEnd } : {})
+            },
+            tag: { not: "SPAM" }
+          }
+        })
+      : Promise.resolve(0)
   ]);
 
-  const report: Partial<MetaBasicMetricsReport> = {
-    lastSyncedAt: metaConn?.lastSyncedAt || null
+  // Geo snapshot rows for proportional distribution
+  const geoRowsAll = allGeoRows.filter(r => r.date.getTime() === new Date("2020-01-01T00:00:00.000Z").getTime());
+  const geoRows90d = allGeoRows.filter(r => r.date.getTime() === new Date("2026-07-01T00:00:00.000Z").getTime());
+  const geoRows30d = allGeoRows.filter(r => r.date.getTime() === new Date("2026-10-01T00:00:00.000Z").getTime());
+
+  const buildPreset = (
+    agg: { _sum: { spend: any; impressions: any; clicks: any } },
+    leads: number,
+    geoRows: any[],
+    presetKey?: string
+  ): PresetBasicMetrics => {
+    const spend = Math.round(Number(agg._sum.spend || 0));
+    const impressions = agg._sum.impressions || 0;
+    const clicks = agg._sum.clicks || 0;
+    const ctr = impressions > 0 ? Math.round((clicks / impressions) * 10000) / 100 : 0;
+    const cpc = clicks > 0 ? Math.round((spend / clicks) * 100) / 100 : 0;
+    const cpl = leads > 0 ? Math.round(spend / leads) : 0;
+    const reach = (presetKey && VERIFIED_REACH_MAP[presetKey])
+      ? VERIFIED_REACH_MAP[presetKey]
+      : Math.round(impressions * 0.75);
+
+    const states = buildStateBreakdown(spend, impressions, clicks, leads, geoRows);
+
+    return {
+      reach,
+      impressions,
+      clicks,
+      spend,
+      ctr,
+      cpc,
+      leads,
+      cpl,
+      states
+    };
   };
 
-  for (const [key, date] of Object.entries(PRESET_DATES) as Array<[keyof typeof PRESET_DATES, Date]>) {
-    const dateTime = date.getTime();
-    const rows = allRows.filter(r => r.date.getTime() === dateTime);
-    let totalImp = 0;
-    let totalClicks = 0;
-    let totalSpend = 0;
-    let totalLeads = 0;
+  const report: MetaBasicMetricsReport = {
+    lastSyncedAt: metaConn?.lastSyncedAt || null,
+    all: buildPreset(aggAll, leadsAll, geoRowsAll.length > 0 ? geoRowsAll : allGeoRows, "all"),
+    "90d": buildPreset(agg90d, leads90d, geoRows90d.length > 0 ? geoRows90d : allGeoRows, "90d"),
+    "30d": buildPreset(agg30d, leads30d, geoRows30d.length > 0 ? geoRows30d : allGeoRows, "30d"),
+    "7d": buildPreset(agg7d, leads7d, geoRows30d.length > 0 ? geoRows30d : allGeoRows, "7d")
+  };
 
-    const statesMap: Record<string, { spend: number; impressions: number; clicks: number; leads: number }> = {};
+  if (customStart) {
+    // Use the 30d/90d/all snapshot depending on duration of custom range
+    const diffDays = customEnd ? Math.round((customEnd.getTime() - customStart.getTime()) / (1000 * 60 * 60 * 24)) : 30;
+    const bestGeoRows = diffDays > 60
+      ? (geoRows90d.length > 0 ? geoRows90d : geoRowsAll)
+      : (geoRows30d.length > 0 ? geoRows30d : allGeoRows);
 
-    for (const r of rows) {
-      const spend = Number(r.spend);
-      const leads = r.firstReplies + r.leads + r.conversations;
-      totalImp += r.impressions;
-      totalClicks += r.clicks;
-      totalSpend += spend;
-      totalLeads += leads;
-
-      if (!statesMap[r.region]) {
-        statesMap[r.region] = { spend: 0, impressions: 0, clicks: 0, leads: 0 };
-      }
-      statesMap[r.region].spend += spend;
-      statesMap[r.region].impressions += r.impressions;
-      statesMap[r.region].clicks += r.clicks;
-      statesMap[r.region].leads += leads;
-    }
-
-    const stateList: StateBasicMetric[] = Object.entries(statesMap)
-      .filter(([name]) => INDIAN_STATE_INTELLIGENCE[name] || statesMap[name].leads > 5)
-      .map(([name, s]) => {
-        const intel = INDIAN_STATE_INTELLIGENCE[name];
-        return {
-          state: name,
-          zone: intel?.zone || "North",
-          spend: Math.round(s.spend),
-          impressions: s.impressions,
-          clicks: s.clicks,
-          leads: s.leads,
-          cpl: s.leads > 0 ? Math.round(s.spend / s.leads) : 0,
-          ctr: s.impressions > 0 ? Math.round((s.clicks / s.impressions) * 10000) / 100 : 0,
-          cpc: s.clicks > 0 ? Math.round((s.spend / s.clicks) * 100) / 100 : 0,
-          topDistricts: intel?.topDistricts || [],
-          recommendedProducts: intel?.recommendedProducts || []
-        };
-      })
-      .sort((a, b) => b.spend - a.spend);
-
-    const nationalCtr = totalImp > 0 ? Math.round((totalClicks / totalImp) * 10000) / 100 : 0;
-    const nationalCpc = totalClicks > 0 ? Math.round((totalSpend / totalClicks) * 100) / 100 : 0;
-    const nationalCpl = totalLeads > 0 ? Math.round(totalSpend / totalLeads) : 0;
-
-    report[key] = {
-      reach: (VERIFIED_REACH_MAP as any)[key] || Math.round(totalImp * 0.75),
-      impressions: totalImp,
-      clicks: totalClicks,
-      spend: Math.round(totalSpend),
-      ctr: nationalCtr,
-      cpc: nationalCpc,
-      leads: totalLeads,
-      cpl: nationalCpl,
-      states: stateList
-    };
+    report.custom = buildPreset(aggCustom, leadsCustom, bestGeoRows);
   }
 
-  // 7-day preset calculation (proportional from 30d)
-  if (report["30d"]) {
-    const d30 = report["30d"];
-    const factor7 = 7 / 30;
-    report["7d"] = {
-      reach: Math.round(d30.reach * factor7),
-      impressions: Math.round(d30.impressions * factor7),
-      clicks: Math.round(d30.clicks * factor7),
-      spend: Math.round(d30.spend * factor7),
-      ctr: d30.ctr,
-      cpc: d30.cpc,
-      leads: Math.round(d30.leads * factor7),
-      cpl: d30.cpl,
-      states: d30.states.map(s => ({
-        ...s,
-        spend: Math.round(s.spend * factor7),
-        impressions: Math.round(s.impressions * factor7),
-        clicks: Math.round(s.clicks * factor7),
-        leads: Math.round(s.leads * factor7)
-      }))
-    };
-  }
-
-  // Custom range calculation
-  if (customRange?.from && report["30d"]) {
-    const fromTime = new Date(customRange.from).getTime();
-    const toTime = customRange.to ? new Date(customRange.to).getTime() : Date.now();
-    const daysDiff = Math.max(1, Math.round((toTime - fromTime) / (1000 * 60 * 60 * 24)));
-    const basePreset = daysDiff > 45 ? report["90d"] || report["30d"] : report["30d"];
-    const baseDays = daysDiff > 45 ? 90 : 30;
-    const factor = Math.min(daysDiff / baseDays, 5.0);
-
-    report["custom"] = {
-      reach: Math.round(basePreset.reach * factor),
-      impressions: Math.round(basePreset.impressions * factor),
-      clicks: Math.round(basePreset.clicks * factor),
-      spend: Math.round(basePreset.spend * factor),
-      ctr: basePreset.ctr,
-      cpc: basePreset.cpc,
-      leads: Math.round(basePreset.leads * factor),
-      cpl: basePreset.cpl,
-      states: basePreset.states.map(s => ({
-        ...s,
-        spend: Math.round(s.spend * factor),
-        impressions: Math.round(s.impressions * factor),
-        clicks: Math.round(s.clicks * factor),
-        leads: Math.round(s.leads * factor)
-      }))
-    };
-  }
-
-  const finalReport = report as MetaBasicMetricsReport;
   if (!customRange?.from) {
-    metaMetricsCache = { data: finalReport, expiresAt: Date.now() + 600000 };
+    metaMetricsCache = { data: report, expiresAt: Date.now() + 180000 }; // 3 min cache
   }
-  return finalReport;
+
+  return report;
 }

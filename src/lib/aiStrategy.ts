@@ -1,5 +1,5 @@
 export interface PlatformTelemetrySummary {
-  range: "30d" | "90d" | "all";
+  range: "30d" | "90d" | "all" | "7d" | "custom" | string;
   blendedSpend: number;
   blendedRoas: number | null;
   meta: {
@@ -55,7 +55,7 @@ export interface AIStrategyResponse {
  */
 export function generateAlgorithmicStrategy(telemetry: PlatformTelemetrySummary): AIStrategyResponse {
   const { range, meta, google, amazon, blendedSpend, blendedRoas } = telemetry;
-  const timeLabel = range === "30d" ? "Past 30 Days" : range === "90d" ? "Past 90 Days" : "All-Time";
+  const timeLabel = range === "30d" ? "Past 30 Days" : range === "90d" ? "Past 90 Days" : range === "7d" ? "Past 7 Days" : range === "custom" ? "Custom Selected Period" : "All-Time";
 
   const parts: string[] = [];
   const actionItems: string[] = [];
