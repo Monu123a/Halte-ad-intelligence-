@@ -4,7 +4,7 @@ import { decrypt, encrypt } from "@/lib/crypto";
 
 const connector = new GoogleAdsConnector();
 
-export async function runGoogleSync(connectionId: string) {
+export async function runGoogleSync(connectionId: string, daysBack: number = 30) {
   const conn = await prisma.adConnection.findUnique({
     where: { id: connectionId }
   });
@@ -52,10 +52,10 @@ export async function runGoogleSync(connectionId: string) {
     } catch {}
   }
 
-  // 2. Fetch recent 90 days for full quarterly intelligence
+  // 2. Fetch recent metrics (default 30 days for fast daily sync, or specified window)
   const endDate = new Date();
   const startDate = new Date();
-  startDate.setDate(startDate.getDate() - 90);
+  startDate.setDate(startDate.getDate() - daysBack);
 
   const rawCampaigns = await connector.fetchCampaigns(accessToken, conn.platformAccountId, metadata);
   const rawAdSets = await connector.fetchAdSets(accessToken, conn.platformAccountId, metadata);
@@ -84,7 +84,18 @@ export async function runGoogleSync(connectionId: string) {
   };
 
   // 4. Map & Upsert Campaigns
-  await pMap(rawCampaigns, async (c) => {
+  const existingCampaigns = await prisma.campaign.findMany({
+    where: { adConnectionId: conn.id },
+    select: { platformCampaignId: true, name: true, objective: true }
+  });
+  const existingCampMap = new Map(existingCampaigns.map(c => [c.platformCampaignId, c]));
+
+  const campaignsToUpsert = rawCampaigns.filter(c => {
+    const existing = existingCampMap.get(c.id);
+    return !existing || existing.name !== c.name || existing.objective !== c.objective;
+  });
+
+  await pMap(campaignsToUpsert, async (c) => {
     const searchString = c.name.toLowerCase();
     let detectedBrand: string | null = null;
     const matchedProducts = new Set<string>();
@@ -122,13 +133,25 @@ export async function runGoogleSync(connectionId: string) {
         products: Array.from(matchedProducts)
       }
     });
-  });
+  }, 30);
 
   // 5. Upsert Ad Sets
   const campMap = await prisma.campaign.findMany({ where: { adConnectionId: conn.id } });
   const campIdMap = new Map(campMap.map(c => [c.platformCampaignId, c.id]));
 
-  await pMap(rawAdSets, async (a) => {
+  const existingAdSets = await prisma.adSet.findMany({
+    where: { campaign: { adConnectionId: conn.id } },
+    select: { platformAdSetId: true, name: true, id: true }
+  });
+  const existingAdSetMap = new Map(existingAdSets.map(a => [a.platformAdSetId, a.name]));
+
+  // Only upsert rawAdSets if not existing or renamed
+  const adSetsToUpsert = rawAdSets.filter(a => {
+    const existingName = existingAdSetMap.get(a.id);
+    return !existingName || existingName !== a.name;
+  });
+
+  await pMap(adSetsToUpsert, async (a) => {
     const parentCampId = campIdMap.get(a.campaignId);
     if (!parentCampId) return;
     
@@ -141,10 +164,15 @@ export async function runGoogleSync(connectionId: string) {
         campaignId: parentCampId
       }
     });
-  });
+  }, 30);
 
   // Ensure campaigns without traditional ad groups (like Performance Max) have a default ad set for metrics
-  await pMap(campMap, async (c) => {
+  const missingPmaxCamps = campMap.filter(c => {
+    const pmaxKey = `pmax_${c.platformCampaignId}`;
+    return !existingAdSetMap.has(pmaxKey);
+  });
+
+  await pMap(missingPmaxCamps, async (c) => {
     const pmaxKey = `pmax_${c.platformCampaignId}`;
     await prisma.adSet.upsert({
       where: { platformAdSetId: pmaxKey },
@@ -155,7 +183,7 @@ export async function runGoogleSync(connectionId: string) {
         campaignId: c.id
       }
     });
-  });
+  }, 30);
 
   // 6. Upsert Metrics
   const asMap = await prisma.adSet.findMany({ 
@@ -189,7 +217,7 @@ export async function runGoogleSync(connectionId: string) {
         rawResponse: m.rawResponse || {}
       }
     });
-  });
+  }, 30);
 
   await prisma.adConnection.update({
     where: { id: conn.id },

@@ -20,7 +20,7 @@ export async function POST() {
 
     const syncResults = [];
     for (const conn of googleConns) {
-      await runGoogleSync(conn.id);
+      await runGoogleSync(conn.id, 30);
       syncResults.push({ id: conn.id, accountId: conn.platformAccountId, label: conn.label });
     }
 
