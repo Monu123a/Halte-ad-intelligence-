@@ -65,6 +65,13 @@ export function MetaBasicMetricsOverview({
   const [metaSearchQuery, setMetaSearchQuery] = useState<string>("");
   const [metaBrandFilter, setMetaBrandFilter] = useState<string>("ALL");
   const [metaFestiveOnly, setMetaFestiveOnly] = useState<boolean>(false);
+  const [copiedCampaignId, setCopiedCampaignId] = useState<string | null>(null);
+
+  const copyCampaignId = (id: string) => {
+    navigator.clipboard.writeText(id);
+    setCopiedCampaignId(id);
+    setTimeout(() => setCopiedCampaignId(null), 2000);
+  };
   const [isUploadingAmazon, setIsUploadingAmazon] = useState<boolean>(false);
   const [uploadAmazonStatus, setUploadAmazonStatus] = useState<{ success?: boolean; message?: string } | null>(null);
 
@@ -1711,20 +1718,27 @@ export function MetaBasicMetricsOverview({
 
             const filteredCampaigns = (baseCampaigns || []).filter((c: any) => {
               // Brand filter
-              if (metaBrandFilter !== "ALL" && c.brand?.toLowerCase() !== metaBrandFilter.toLowerCase()) {
-                return false;
+              if (metaBrandFilter !== "ALL") {
+                const b = (c.brand || "").toLowerCase();
+                const target = metaBrandFilter.toLowerCase();
+                if (target === "halte all") {
+                  if (!b.includes("halte") && b !== "all") return false;
+                } else if (b !== target) {
+                  return false;
+                }
               }
               // Festive filter
               if (metaFestiveOnly) {
-                if (!festiveRegex.test(c.name)) return false;
+                if (!festiveRegex.test(c.name) && !c.isFestive) return false;
               }
-              // Search query
+              // Search query (including identification platformCampaignId / ID)
               if (metaSearchQuery.trim()) {
                 const q = metaSearchQuery.toLowerCase();
                 const matchName = c.name?.toLowerCase().includes(q);
                 const matchBrand = c.brand?.toLowerCase().includes(q);
                 const matchObj = c.objective?.toLowerCase().includes(q);
-                if (!matchName && !matchBrand && !matchObj) return false;
+                const matchId = (c.platformCampaignId || c.id)?.toLowerCase().includes(q);
+                if (!matchName && !matchBrand && !matchObj && !matchId) return false;
               }
               return true;
             });
@@ -1809,17 +1823,27 @@ export function MetaBasicMetricsOverview({
                     {/* Brand Filter Chips */}
                     {["ALL", "Gardena", "BKR", "Gorilla", "Velcro", "Halte All"].map((brandName) => {
                       const isSelected = metaBrandFilter.toLowerCase() === brandName.toLowerCase();
+                      const count = (baseCampaigns || []).filter((c: any) => {
+                        if (brandName === "ALL") return true;
+                        const b = (c.brand || "").toLowerCase();
+                        const target = brandName.toLowerCase();
+                        if (target === "halte all") return b.includes("halte") || b === "all";
+                        return b === target;
+                      }).length;
                       return (
                         <button
                           key={brandName}
                           onClick={() => setMetaBrandFilter(brandName)}
-                          className={`px-2.5 py-0.5 rounded-sm font-medium transition-colors ${
+                          className={`px-2.5 py-0.5 rounded-sm font-medium transition-colors flex items-center gap-1.5 ${
                             isSelected
                               ? "bg-ink text-white font-semibold"
                               : "bg-card text-ink-soft border border-stone hover:bg-stone/20"
                           }`}
                         >
-                          {brandName === "ALL" ? "All Brands" : brandName}
+                          <span>{brandName === "ALL" ? "All Brands" : brandName}</span>
+                          <span className={`text-[10px] px-1 rounded-full font-mono ${isSelected ? "bg-white/20 text-white" : "bg-stone/40 text-stone-dark"}`}>
+                            {count}
+                          </span>
                         </button>
                       );
                     })}
@@ -1839,12 +1863,13 @@ export function MetaBasicMetricsOverview({
                   </div>
                 </div>
 
-                <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
+                <div className="overflow-x-auto max-h-[540px] overflow-y-auto">
                   <table className="w-full text-left text-[12px] border-collapse">
                     <thead className="sticky top-0 bg-[#FAF9F6] shadow-2xs z-10">
                       <tr className="border-b border-stone text-ink-soft font-semibold text-[11px] uppercase tracking-wider">
-                        <th className="py-2.5 px-4">Campaign Name</th>
+                        <th className="py-2.5 px-4 min-w-[240px]">Campaign Name &amp; ID</th>
                         <th className="py-2.5 px-3">Brand</th>
+                        <th className="py-2.5 px-3 min-w-[130px]">Delivery Status</th>
                         <th className="py-2.5 px-3">Objective</th>
                         <th className="py-2.5 px-3 text-right">Spend</th>
                         <th className="py-2.5 px-3 text-right">Impressions</th>
@@ -1853,13 +1878,13 @@ export function MetaBasicMetricsOverview({
                         <th className="py-2.5 px-3 text-right">CPC</th>
                         <th className="py-2.5 px-3 text-right">Inbound Leads</th>
                         <th className="py-2.5 px-3 text-right">CPL</th>
-                        <th className="py-2.5 px-4">Status &amp; Insights</th>
+                        <th className="py-2.5 px-4">Insights</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-stone">
                       {filteredCampaigns.length === 0 ? (
                         <tr>
-                          <td colSpan={11} className="py-8 text-center text-ink-soft">
+                          <td colSpan={12} className="py-8 text-center text-ink-soft">
                             No Meta campaigns found matching criteria.
                             {(metaFestiveOnly || metaBrandFilter !== "ALL" || metaSearchQuery) && (
                               <div className="mt-2">
@@ -1879,19 +1904,53 @@ export function MetaBasicMetricsOverview({
                         </tr>
                       ) : (
                         filteredCampaigns.map((c: any) => {
-                          const isFestive = festiveRegex.test(c.name);
+                          const isFestive = festiveRegex.test(c.name) || c.isFestive;
+                          const campaignMetaId = c.platformCampaignId || c.id;
                           return (
                             <tr key={c.id} className="hover:bg-[#FAF9F6]/70 transition-colors">
                               <td className="py-3 px-4 font-semibold text-ink">
-                                <div className="flex flex-col gap-1 items-start">
-                                  <span>{c.name}</span>
-                                  {isFestive && (
-                                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
-                                      <span>🎉</span> Festive / Offer Campaign
-                                    </span>
-                                  )}
+                                <div className="flex flex-col gap-1 items-start max-w-sm">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-[12.5px] font-bold text-ink leading-snug">{c.name}</span>
+                                    {isFestive && (
+                                      <span className="text-[9.5px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-0.5">
+                                        <span>🎉</span> Festive Offer
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* Identification ID & Meta Ads Manager Action */}
+                                  <div className="flex items-center gap-2 text-[10.5px] text-ink-soft flex-wrap mt-0.5">
+                                    <div className="flex items-center gap-1 bg-stone/40 px-1.5 py-0.5 rounded border border-stone font-mono">
+                                      <span className="text-stone-dark font-medium">ID:</span>
+                                      <span className="text-ink select-all">{campaignMetaId}</span>
+                                      <button
+                                        onClick={() => copyCampaignId(campaignMetaId)}
+                                        title="Copy Meta Campaign ID"
+                                        className="hover:text-ink text-ink-soft ml-0.5"
+                                      >
+                                        {copiedCampaignId === campaignMetaId ? (
+                                          <Check className="w-3 h-3 text-green" />
+                                        ) : (
+                                          <Copy className="w-3 h-3" />
+                                        )}
+                                      </button>
+                                    </div>
+
+                                    <a
+                                      href={`https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=104225649910366&selected_campaign_ids=${campaignMetaId}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-0.5 font-medium"
+                                      title="Open this campaign directly in Meta Ads Manager"
+                                    >
+                                      <span>Ads Manager</span>
+                                      <ExternalLink className="w-2.5 h-2.5" />
+                                    </a>
+                                  </div>
                                 </div>
                               </td>
+
                               <td className="py-3 px-3">
                                 <span className={`text-[10.5px] font-semibold px-2 py-0.5 rounded ${
                                   c.brand === "Gardena"
@@ -1907,6 +1966,39 @@ export function MetaBasicMetricsOverview({
                                   {c.brand || "Halte All"}
                                 </span>
                               </td>
+
+                              {/* Delivery Status Bar */}
+                              <td className="py-3 px-3">
+                                <div className="flex flex-col gap-1 items-start min-w-[125px]">
+                                  {c.deliveryStatus === "BOOSTED" || /instagram|boosted/i.test(c.name) ? (
+                                    <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center gap-1">
+                                      <Sparkles className="w-2.5 h-2.5 text-indigo-500" />
+                                      <span>Boosted Post</span>
+                                    </span>
+                                  ) : c.spend > 0 || c.impressions > 100 ? (
+                                    <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1.5">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                      <span>Ongoing (Active)</span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10.5px] font-medium px-2 py-0.5 rounded-full bg-stone/50 text-stone-dark border border-stone flex items-center gap-1">
+                                      <Clock className="w-2.5 h-2.5 text-stone-dark" />
+                                      <span>Completed</span>
+                                    </span>
+                                  )}
+
+                                  {/* Mini Status / Activity Bar */}
+                                  <div className="w-full bg-stone/40 h-1.5 rounded-full overflow-hidden mt-0.5">
+                                    <div
+                                      className={`h-full rounded-full transition-all ${
+                                        c.spend > 0 ? "bg-emerald-500" : "bg-stone"
+                                      }`}
+                                      style={{ width: `${Math.min(100, Math.max(8, (c.spend / 5000) * 100))}%` }}
+                                    ></div>
+                                  </div>
+                                </div>
+                              </td>
+
                               <td className="py-3 px-3 text-ink-soft font-mono text-[11px]">
                                 {c.objective || "ENGAGEMENT"}
                               </td>
@@ -1934,7 +2026,7 @@ export function MetaBasicMetricsOverview({
                               <td className="py-3 px-4">
                                 {c.leads > 0 && c.cpl < 50 ? (
                                   <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded bg-green-tint text-green border border-green/20">
-                                    High Efficiency Lead Gen
+                                    High Efficiency
                                   </span>
                                 ) : c.leads > 0 ? (
                                   <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded bg-slate-tint text-slate border border-slate/20">

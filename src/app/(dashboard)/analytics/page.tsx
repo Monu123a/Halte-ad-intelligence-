@@ -3,12 +3,16 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { getWebsiteAnalyticsData, formatDuration } from "@/lib/analyticsService";
 import { runWebsiteAnalyticsSync } from "@/lib/sync/websiteAnalyticsSync";
+import { DateRangeSelector } from "@/components/DateRangeSelector";
 
 export const dynamic = "force-dynamic";
 
 interface AnalyticsPageProps {
   searchParams: {
     days?: string;
+    range?: string;
+    from?: string;
+    to?: string;
     brand?: string;
     page?: string;
     q?: string;
@@ -29,17 +33,53 @@ export default async function WebsiteAnalyticsPage({ searchParams }: AnalyticsPa
     }
   }
 
-  const days = parseInt(searchParams.days || "30", 10);
+  const rangeParam = searchParams.range || (searchParams.days ? (searchParams.days === "3650" ? "all" : `${searchParams.days}d`) : "30d");
+  const validRange = rangeParam === "7d" ? "7d" : rangeParam === "90d" ? "90d" : rangeParam === "all" || searchParams.days === "3650" ? "all" : rangeParam === "custom" ? "custom" : "30d";
+  const from = searchParams.from;
+  const to = searchParams.to;
   const brand = searchParams.brand || "ALL";
   const page = parseInt(searchParams.page || "1", 10);
   const searchQuery = (searchParams.q || "").toLowerCase().trim();
 
+  let days = 30;
+  if (validRange === "7d") days = 7;
+  else if (validRange === "90d") days = 90;
+  else if (validRange === "all") days = 3650;
+
+  const customRange = (validRange === "custom" && from)
+    ? {
+        from: new Date(from.includes("T") ? from : `${from}T00:00:00.000Z`),
+        to: to ? new Date(to.includes("T") ? to : `${to}T23:59:59.999Z`) : new Date(new Date().setHours(23, 59, 59, 999))
+      }
+    : undefined;
+
   const { overview, pagedPages, totalPagesCount } = await getWebsiteAnalyticsData({
     days,
+    from: customRange?.from,
+    to: customRange?.to,
     brand,
     page,
     pageSize: 15,
   });
+
+  const buildUrl = (newParams: Record<string, string | number | undefined>) => {
+    const p = new URLSearchParams();
+    if (validRange) p.set("range", validRange);
+    if (validRange === "custom" && from) p.set("from", from);
+    if (validRange === "custom" && to) p.set("to", to);
+    if (brand && brand !== "ALL") p.set("brand", brand);
+    if (searchQuery) p.set("q", searchQuery);
+
+    for (const [k, v] of Object.entries(newParams)) {
+      if (v === undefined || v === "" || v === "ALL" || (k === "page" && v === 1)) {
+        p.delete(k);
+      } else {
+        p.set(k, String(v));
+      }
+    }
+    const s = p.toString();
+    return s ? `/analytics?${s}` : "/analytics";
+  };
 
   const filteredPages = searchQuery
     ? pagedPages.filter(
@@ -100,41 +140,13 @@ export default async function WebsiteAnalyticsPage({ searchParams }: AnalyticsPa
           </p>
         </div>
 
-        <div className="flex gap-3 items-center">
-          <div className="flex border border-stone rounded-md overflow-hidden bg-card text-[12px] font-semibold text-ink-soft">
-            <Link
-              href={`/analytics?days=7&brand=${brand}`}
-              className={`px-3 py-1.5 transition-colors ${
-                days === 7 ? "bg-ink text-white" : "hover:bg-stone/20"
-              }`}
-            >
-              7D
-            </Link>
-            <Link
-              href={`/analytics?days=30&brand=${brand}`}
-              className={`px-3 py-1.5 border-l border-stone transition-colors ${
-                days === 30 ? "bg-ink text-white" : "hover:bg-stone/20"
-              }`}
-            >
-              30D
-            </Link>
-            <Link
-              href={`/analytics?days=90&brand=${brand}`}
-              className={`px-3 py-1.5 border-l border-stone transition-colors ${
-                days === 90 ? "bg-ink text-white" : "hover:bg-stone/20"
-              }`}
-            >
-              90D
-            </Link>
-            <Link
-              href={`/analytics?days=3650&brand=${brand}`}
-              className={`px-3 py-1.5 border-l border-stone transition-colors ${
-                days >= 365 ? "bg-ink text-white" : "hover:bg-stone/20"
-              }`}
-            >
-              All Time
-            </Link>
-          </div>
+        <div className="flex flex-wrap gap-3 items-center">
+          {/* Global Date Range Selector with Custom Range & Presets */}
+          <DateRangeSelector
+            currentRange={validRange}
+            from={from}
+            to={to}
+          />
 
           <div className="text-[12.5px] border border-stone px-4 py-2 text-ink-soft bg-card rounded-md flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-green animate-pulse"></span>
@@ -142,7 +154,7 @@ export default async function WebsiteAnalyticsPage({ searchParams }: AnalyticsPa
           </div>
 
           <Link
-            href={`/analytics?days=${days}&brand=${brand}&sync=true`}
+            href={buildUrl({ sync: "true" })}
             className="text-[12px] font-semibold border border-stone px-3 py-2 rounded-md bg-card text-ink hover:bg-stone/30 transition-colors flex items-center gap-1.5"
             title="Fetch and sync recent visitor telemetry from Halte.in"
           >
@@ -156,19 +168,19 @@ export default async function WebsiteAnalyticsPage({ searchParams }: AnalyticsPa
 
       {/* Brand Navigation Tabs */}
       <div className="flex gap-2.5 mb-7">
-        <Link href={`/analytics?days=${days}&brand=ALL`} className={getTabClass("ALL")}>
+        <Link href={buildUrl({ brand: "ALL", page: 1 })} className={getTabClass("ALL")}>
           All Brands
         </Link>
-        <Link href={`/analytics?days=${days}&brand=Gardena`} className={getTabClass("Gardena")}>
+        <Link href={buildUrl({ brand: "Gardena", page: 1 })} className={getTabClass("Gardena")}>
           Gardena
         </Link>
-        <Link href={`/analytics?days=${days}&brand=BKR`} className={getTabClass("BKR")}>
+        <Link href={buildUrl({ brand: "BKR", page: 1 })} className={getTabClass("BKR")}>
           BKR
         </Link>
-        <Link href={`/analytics?days=${days}&brand=Gorilla`} className={getTabClass("Gorilla")}>
+        <Link href={buildUrl({ brand: "Gorilla", page: 1 })} className={getTabClass("Gorilla")}>
           Gorilla
         </Link>
-        <Link href={`/analytics?days=${days}&brand=Velcro`} className={getTabClass("Velcro")}>
+        <Link href={buildUrl({ brand: "Velcro", page: 1 })} className={getTabClass("Velcro")}>
           Velcro
         </Link>
       </div>
@@ -684,19 +696,17 @@ export default async function WebsiteAnalyticsPage({ searchParams }: AnalyticsPa
         </table>
 
         {/* Pagination */}
-        {totalPagesCount > 15 && (
+        {totalPagesCount > 1 && (
           <div className="flex justify-between items-center mt-6 pt-4 border-t border-stone">
             <div className="text-[12.5px] text-ink-soft">
-              Showing {(page - 1) * 15 + 1} to {Math.min(page * 15, totalPagesCount)} of{" "}
-              {totalPagesCount} pages
+              Showing {(page - 1) * 15 + 1} to {Math.min(page * 15, overview.totalPageviews)} of{" "}
+              {overview.totalPageviews.toLocaleString()} page records
             </div>
             <div className="flex gap-2">
               {page > 1 ? (
                 <Link
-                  href={`/analytics?days=${days}&brand=${brand}&page=${page - 1}${
-                    searchParams.q ? `&q=${encodeURIComponent(searchParams.q)}` : ""
-                  }`}
-                  className="px-3 py-1.5 border border-stone rounded-sm text-[12.5px] hover:bg-stone"
+                  href={buildUrl({ page: page - 1 })}
+                  className="px-3 py-1.5 border border-stone rounded-sm text-[12.5px] hover:bg-stone text-ink"
                 >
                   Previous
                 </Link>
@@ -706,12 +716,10 @@ export default async function WebsiteAnalyticsPage({ searchParams }: AnalyticsPa
                 </span>
               )}
 
-              {page * 15 < totalPagesCount ? (
+              {page < totalPagesCount ? (
                 <Link
-                  href={`/analytics?days=${days}&brand=${brand}&page=${page + 1}${
-                    searchParams.q ? `&q=${encodeURIComponent(searchParams.q)}` : ""
-                  }`}
-                  className="px-3 py-1.5 border border-stone rounded-sm text-[12.5px] hover:bg-stone"
+                  href={buildUrl({ page: page + 1 })}
+                  className="px-3 py-1.5 border border-stone rounded-sm text-[12.5px] hover:bg-stone text-ink"
                 >
                   Next
                 </Link>

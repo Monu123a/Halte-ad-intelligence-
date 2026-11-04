@@ -17,6 +17,7 @@ export interface StateBasicMetric {
 
 export interface MetaCampaignMetric {
   id: string;
+  platformCampaignId?: string;
   name: string;
   objective: string;
   brand: string;
@@ -27,6 +28,8 @@ export interface MetaCampaignMetric {
   ctr: number;
   cpc: number;
   cpl: number;
+  deliveryStatus?: "ONGOING" | "BOOSTED" | "COMPLETED";
+  isFestive?: boolean;
 }
 
 export interface PresetBasicMetrics {
@@ -52,6 +55,27 @@ export interface MetaBasicMetricsReport {
   "7d": PresetBasicMetrics;
   custom?: PresetBasicMetrics;
   [key: string]: any;
+}
+
+// Helper to detect brand from campaign metadata or campaign name keywords
+export function resolveMetaCampaignBrand(name: string, explicitBrand?: string | null): string {
+  if (explicitBrand && explicitBrand !== "Halte All" && explicitBrand !== "Halte (Direct)" && explicitBrand.trim() !== "") {
+    return explicitBrand;
+  }
+  const lower = (name || "").toLowerCase();
+  if (lower.includes("gardena") || lower.includes("hose") || lower.includes("prun") || lower.includes("lawn") || lower.includes("grass") || lower.includes("garden")) {
+    return "Gardena";
+  }
+  if (lower.includes("bkr") || lower.includes("chainsaw") || lower.includes("tiller") || lower.includes("cutter") || lower.includes("trimmer") || lower.includes("sprayer") || lower.includes("fogger") || lower.includes("machine") || lower.includes("hedge")) {
+    return "BKR";
+  }
+  if (lower.includes("velcro") || lower.includes("fastener") || lower.includes("one-wrap") || lower.includes("strap") || lower.includes("hook") || lower.includes("loop") || lower.includes("stick. hold")) {
+    return "Velcro";
+  }
+  if (lower.includes("gorilla") || lower.includes("glue") || lower.includes("seal") || lower.includes("patch") || lower.includes("awd") || lower.includes("icy road")) {
+    return "Gorilla";
+  }
+  return "Halte All";
 }
 
 // De-duplicated verified reach baseline across active accounts from Meta Insights API
@@ -201,6 +225,7 @@ export async function getMetaOverviewMetrics(customRange?: { from?: Date; to?: D
       where: { adConnection: { platform: "META" } },
       select: {
         id: true,
+        platformCampaignId: true,
         name: true,
         objective: true,
         brand: { select: { name: true } },
@@ -309,18 +334,30 @@ export async function getMetaOverviewMetrics(customRange?: { from?: Date; to?: D
     const cpc = cClicks > 0 ? Math.round((cSpend / cClicks) * 100) / 100 : 0;
     const cpl = cLeads > 0 ? Math.round(cSpend / cLeads) : 0;
 
+    const isBoosted = /instagram|boosted|story/i.test(c.name) || /post_engagement|engagement|video_views/i.test(c.objective || "");
+    const deliveryStatus: "ONGOING" | "BOOSTED" | "COMPLETED" =
+      (cSpend > 0 || cImp > 100)
+        ? (isBoosted ? "BOOSTED" : "ONGOING")
+        : "COMPLETED";
+
+    const isFestive = /festiv|diwali|offer|deal|sale|navratri|christmas|rakhi/i.test(c.name);
+    const resolvedBrand = resolveMetaCampaignBrand(c.name, c.brand?.name);
+
     const metric: MetaCampaignMetric = {
       id: c.id,
+      platformCampaignId: c.platformCampaignId || c.id,
       name: c.name,
       objective: c.objective || "ENGAGEMENT",
-      brand: c.brand?.name || "Halte All",
+      brand: resolvedBrand,
       spend: Math.round(cSpend),
       impressions: cImp,
       clicks: cClicks,
       leads: cLeads,
       ctr,
       cpc,
-      cpl
+      cpl,
+      deliveryStatus,
+      isFestive
     };
 
     allCampList.push(metric);

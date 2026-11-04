@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 
 interface Kpis {
@@ -89,6 +89,13 @@ export default function ReportsClient({
       setPreviewLoading(false);
     }
   };
+
+  // Re-fetch preview data automatically when date range or brand changes
+  useEffect(() => {
+    if (previewType && previewTitle) {
+      handlePreview(previewType, previewTitle);
+    }
+  }, [dateRange, customStart, customEnd, selectedBrand]);
 
   return (
     <div className="space-y-8 pb-16">
@@ -556,7 +563,7 @@ export default function ReportsClient({
             <div>
               <h3 className="font-serif text-[18px] font-bold text-ink m-0">{previewTitle}</h3>
               <p className="text-[12px] text-ink-soft m-0">
-                Showing sample rows for current date range: <strong>{dateRange}</strong> | Brand: <strong>{selectedBrand}</strong>
+                Showing sample rows for current date range: <strong>{dateRange === "custom" ? `${customStart || "Start"} to ${customEnd || "End"}` : dateRange.toUpperCase().replace("_", " ")}</strong> | Brand: <strong>{selectedBrand}</strong>
               </p>
             </div>
             <div className="flex items-center gap-2">
