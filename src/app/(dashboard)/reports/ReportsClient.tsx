@@ -95,6 +95,7 @@ export default function ReportsClient({
     if (previewType && previewTitle) {
       handlePreview(previewType, previewTitle);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateRange, customStart, customEnd, selectedBrand]);
 
   return (

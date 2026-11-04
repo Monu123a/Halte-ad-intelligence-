@@ -48,6 +48,36 @@ export async function PATCH(
         created_at: new Date().toISOString(),
       };
       updateData.remarks = [newRemark, ...currentRemarks];
+
+      // Auto-promote status to CONTACTED if currently ABANDONED
+      if (!updateData.status && existing.status === "ABANDONED") {
+        updateData.status = "CONTACTED";
+        updateData.lastContactedAt = new Date();
+        updateData.contactedBy = session?.email || "staff@halte.in";
+      }
+
+      // Sync remark back to Halte DB contact_submissions in real time
+      if (existing.customerId) {
+        try {
+          fetch("https://halte.in/api/haltedb/abandoned-carts", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-key":
+                process.env.DASHBOARD_API_KEY ||
+                process.env.HALTE_SYNC_KEY ||
+                "sdbl573th5ige8ityi65iubtlnrshvopbw3jv",
+            },
+            body: JSON.stringify({
+              customer_id: Number(existing.customerId),
+              remark: remark.trim(),
+              added_by: session?.email || "Staff",
+            }),
+          }).catch((e) => console.warn("Background push to HalteDB failed:", e));
+        } catch (e) {
+          console.warn("Error initiating push to HalteDB:", e);
+        }
+      }
     }
 
     const updated = await prisma.abandonedCart.update({

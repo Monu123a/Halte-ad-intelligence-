@@ -655,8 +655,29 @@ export default function AbandonedCartsClient({
                           {cart.status === "ABANDONED" && <AlertCircle className="w-3 h-3 text-amber-700" />}
                           {cart.status}
                         </span>
-                        {cart.lastContactedAt && (
-                          <div className="text-[10.5px] text-stone-dark mt-1">
+
+                        {/* Recorded Action / Remark Badge from Halte Admin Panel */}
+                        {cart.remarks && cart.remarks.length > 0 && (
+                          <div className="mt-1.5 p-1.5 rounded bg-blue-50/80 border border-blue-200/60 text-[11px] max-w-[210px] shadow-2xs">
+                            <div
+                              className="font-semibold text-blue-950 truncate"
+                              title={typeof cart.remarks[0] === "string" ? cart.remarks[0] : (cart.remarks[0] as any).remark}
+                            >
+                              💬 {typeof cart.remarks[0] === "string" ? cart.remarks[0] : (cart.remarks[0] as any).remark}
+                            </div>
+                            <div className="text-[10px] text-blue-700 mt-0.5 flex items-center justify-between">
+                              <span className="truncate max-w-[120px]">
+                                {typeof cart.remarks[0] === "string" ? "Staff" : ((cart.remarks[0] as any).added_by || "Staff")}
+                              </span>
+                              <span className="shrink-0 text-[9.5px]">
+                                {cart.lastContactedAt ? formatTimeAgo(cart.lastContactedAt) : ""}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {cart.lastContactedAt && (!cart.remarks || cart.remarks.length === 0) && (
+                          <div className="text-[10.5px] text-stone-dark mt-1 font-mono">
                             Contacted {formatTimeAgo(cart.lastContactedAt)}
                           </div>
                         )}
@@ -988,18 +1009,30 @@ export default function AbandonedCartsClient({
                   {selectedCart.remarks && selectedCart.remarks.length > 0 && (
                     <div className="mt-4 border-t border-stone/20 pt-3">
                       <div className="text-[11px] font-bold uppercase tracking-wider text-stone-dark mb-2">
-                        Activity &amp; Remarks Timeline
+                        Activity &amp; Remarks Timeline ({selectedCart.remarks.length})
                       </div>
                       <div className="space-y-2">
-                        {selectedCart.remarks.map((r, i) => (
-                          <div key={i} className="text-[12px] bg-stone-light/40 p-2.5 rounded border border-stone/20">
-                            <p className="text-slate font-medium">{r.remark}</p>
-                            <div className="text-[10.5px] text-stone-dark mt-1 flex items-center justify-between">
-                              <span>By: {r.added_by || "Staff"}</span>
-                              <span>{new Date(r.created_at).toLocaleDateString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>
+                        {selectedCart.remarks.map((r: any, i: number) => {
+                          const rText = typeof r === "string" ? r : r.remark || "";
+                          const rAuthor = typeof r === "string" ? "Staff" : r.added_by || "Staff";
+                          const rDate = typeof r === "string" ? selectedCart.cartUpdatedAt : r.created_at || selectedCart.cartUpdatedAt;
+                          return (
+                            <div key={i} className="text-[12px] bg-stone-light/40 p-2.5 rounded border border-stone/20">
+                              <p className="text-slate font-medium">{rText}</p>
+                              <div className="text-[10.5px] text-stone-dark mt-1 flex items-center justify-between">
+                                <span>By: {rAuthor}</span>
+                                <span>
+                                  {new Date(rDate).toLocaleDateString("en-IN", {
+                                    day: "numeric",
+                                    month: "short",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </span>
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
