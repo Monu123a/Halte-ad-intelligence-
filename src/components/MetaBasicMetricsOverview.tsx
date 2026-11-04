@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { MetaBasicMetricsReport, StateBasicMetric } from "@/lib/metaBasicMetrics";
@@ -32,7 +32,9 @@ import {
   Loader2,
   RefreshCw,
   Clock,
-  Calendar
+  Calendar,
+  ChevronDown,
+  X
 } from "lucide-react";
 
 export function MetaBasicMetricsOverview({
@@ -140,7 +142,214 @@ export function MetaBasicMetricsOverview({
     router.replace(`?${params.toString()}`, { scroll: false });
   };
 
+  const [isCustomPickerOpen, setIsCustomPickerOpen] = useState<boolean>(false);
+  const customPickerRef = useRef<HTMLDivElement>(null);
+
+  const thirtyDaysAgoStr = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const todayStr = new Date().toISOString().split("T")[0];
+
+  const [customFromInput, setCustomFromInput] = useState<string>(searchParams.get("from") || thirtyDaysAgoStr);
+  const [customToInput, setCustomToInput] = useState<string>(searchParams.get("to") || todayStr);
+
+  useEffect(() => {
+    if (searchParams.get("from")) setCustomFromInput(searchParams.get("from")!);
+    if (searchParams.get("to")) setCustomToInput(searchParams.get("to")!);
+  }, [searchParams]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (customPickerRef.current && !customPickerRef.current.contains(event.target as Node)) {
+        setIsCustomPickerOpen(false);
+      }
+    }
+    if (isCustomPickerOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isCustomPickerOpen]);
+
+  const handleApplyCustomDates = (fromStr: string, toStr: string) => {
+    setIsCustomPickerOpen(false);
+    setSelectedTimeRange("custom");
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("range", "custom");
+    params.set("from", fromStr);
+    if (toStr) params.set("to", toStr);
+    else params.delete("to");
+    params.set("platform", selectedPlatform);
+    params.delete("page");
+    router.replace(`?${params.toString()}`, { scroll: false });
+  };
+
+  const handleCustomDateSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customFromInput) return;
+    handleApplyCustomDates(customFromInput, customToInput);
+  };
+
+  const handleApplyQuickRange = (fromStr: string, toStr: string) => {
+    setCustomFromInput(fromStr);
+    setCustomToInput(toStr);
+    handleApplyCustomDates(fromStr, toStr);
+  };
+
+  const handleApplyQuickDays = (days: number) => {
+    const endStr = new Date().toISOString().split("T")[0];
+    const startStr = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+    setCustomFromInput(startStr);
+    setCustomToInput(endStr);
+    handleApplyCustomDates(startStr, endStr);
+  };
+
+  const fromParam = searchParams.get("from");
+  const toParam = searchParams.get("to");
+  let customRangeLabel = "Custom Range";
+  if (selectedTimeRange === "custom" && fromParam) {
+    try {
+      const f = new Date(fromParam).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+      const t = toParam ? new Date(toParam).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "Today";
+      customRangeLabel = `${f} – ${t}`;
+    } catch {
+      customRangeLabel = `${fromParam} to ${toParam || "now"}`;
+    }
+  }
+
+  const renderCustomRangePicker = () => (
+    <div className="relative inline-block" ref={customPickerRef}>
+      <button
+        type="button"
+        onClick={() => setIsCustomPickerOpen(!isCustomPickerOpen)}
+        className={`px-3 py-1 rounded text-[11.5px] font-semibold transition-all flex items-center gap-1.5 border ${
+          selectedTimeRange === "custom"
+            ? "bg-slate text-white border-slate shadow-2xs"
+            : "text-ink-soft hover:text-ink hover:bg-stone/20 border-transparent"
+        }`}
+        title="Choose custom date range"
+      >
+        <Calendar className={`w-3.5 h-3.5 ${selectedTimeRange === "custom" ? "text-white" : "text-emerald-600"}`} />
+        <span>{customRangeLabel}</span>
+        <ChevronDown className={`w-3 h-3 transition-transform ${isCustomPickerOpen ? "rotate-180" : ""}`} />
+      </button>
+
+      {isCustomPickerOpen && (
+        <div className="absolute left-0 sm:right-0 sm:left-auto top-full mt-2 z-50 w-80 bg-white border border-stone rounded-md shadow-xl p-4 text-left">
+          <div className="flex items-center justify-between border-b border-stone/30 pb-2 mb-3">
+            <div className="flex items-center gap-1.5 text-[12px] font-bold text-slate">
+              <Calendar className="w-4 h-4 text-emerald-600" />
+              <span>Select Specific Dates</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsCustomPickerOpen(false)}
+              className="p-1 text-stone-dark hover:text-slate rounded"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="mb-3">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-ink-soft block mb-1.5">
+              Quick Presets
+            </span>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                type="button"
+                onClick={() => handleApplyQuickRange("2026-10-01", "2026-10-31")}
+                className="text-[11px] py-1 px-2 text-left bg-stone-light hover:bg-stone/30 rounded text-slate font-medium transition-colors"
+              >
+                Oct 2026 (Festive)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleApplyQuickRange("2026-10-01", "2026-10-10")}
+                className="text-[11px] py-1 px-2 text-left bg-stone-light hover:bg-stone/30 rounded text-slate font-medium transition-colors"
+              >
+                1 Oct – 10 Oct
+              </button>
+              <button
+                type="button"
+                onClick={() => handleApplyQuickRange("2026-11-01", "2026-11-30")}
+                className="text-[11px] py-1 px-2 text-left bg-stone-light hover:bg-stone/30 rounded text-slate font-medium transition-colors"
+              >
+                Nov 2026 (Current)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleApplyQuickDays(14)}
+                className="text-[11px] py-1 px-2 text-left bg-stone-light hover:bg-stone/30 rounded text-slate font-medium transition-colors"
+              >
+                Last 14 Days
+              </button>
+            </div>
+          </div>
+
+          <form onSubmit={handleCustomDateSubmit} className="space-y-3">
+            <div className="space-y-2">
+              <div>
+                <label className="text-[11px] font-semibold text-ink-soft block mb-1">
+                  Start Date (From)
+                </label>
+                <input
+                  type="date"
+                  value={customFromInput}
+                  max={todayStr}
+                  onChange={(e) => setCustomFromInput(e.target.value)}
+                  className="w-full text-[12px] p-1.5 border border-stone-dark/30 rounded bg-white text-slate focus:border-slate outline-none font-mono"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-semibold text-ink-soft block mb-1">
+                  End Date (To)
+                </label>
+                <input
+                  type="date"
+                  value={customToInput}
+                  min={customFromInput}
+                  max={todayStr}
+                  onChange={(e) => setCustomToInput(e.target.value)}
+                  className="w-full text-[12px] p-1.5 border border-stone-dark/30 rounded bg-white text-slate focus:border-slate outline-none font-mono"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-2 border-t border-stone/30">
+              <button
+                type="button"
+                onClick={() => handleTimeRangeChange("30d")}
+                className="text-[11px] text-ink-soft hover:text-slate underline"
+              >
+                Reset to 30d
+              </button>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCustomPickerOpen(false)}
+                  className="px-2.5 py-1 text-[11.5px] border border-stone rounded hover:bg-stone/20 text-slate font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-3 py-1 text-[11.5px] bg-slate hover:bg-slate/90 text-white rounded font-semibold flex items-center gap-1 shadow-xs"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  Apply Dates
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+
   const handleTimeRangeChange = (rangeKey: string) => {
+    setIsCustomPickerOpen(false);
     setSelectedTimeRange(rangeKey);
     const params = new URLSearchParams(searchParams.toString());
     params.set("range", rangeKey);
@@ -313,7 +522,7 @@ export function MetaBasicMetricsOverview({
             <div className="font-semibold text-ink flex flex-wrap items-center gap-2 mb-1">
               <span>Cross-Platform AI Allocation Strategy</span>
               <span className="text-[10px] uppercase font-mono px-1.5 py-0.2 rounded bg-stone/30 text-stone-dark font-bold">
-                {selectedTimeRange === "30d" ? "Past 30 Days" : selectedTimeRange === "90d" ? "Past 90 Days" : "All Time"}
+                {selectedTimeRange === "30d" ? "Past 30 Days" : selectedTimeRange === "90d" ? "Past 90 Days" : selectedTimeRange === "7d" ? "Past 7 Days" : selectedTimeRange === "custom" ? (searchParams.get("from") ? `${searchParams.get("from")} to ${searchParams.get("to") || "today"}` : "Custom Period") : "All Time"}
               </span>
               <span className="text-[10px] font-semibold px-2 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200/60 flex items-center gap-1">
                 <Sparkles className="w-2.5 h-2.5" />
@@ -401,11 +610,7 @@ export function MetaBasicMetricsOverview({
                 >
                   All Synced
                 </button>
-                {selectedTimeRange === "custom" && (
-                  <span className="px-3 py-1 rounded text-[11.5px] font-semibold bg-slate text-white">
-                    {searchParams.get("from") ? `Custom (${searchParams.get("from")}${searchParams.get("to") ? ` to ${searchParams.get("to")}` : ""})` : "Custom Range"}
-                  </span>
-                )}
+                {renderCustomRangePicker()}
               </div>
             </div>
 
@@ -899,11 +1104,7 @@ export function MetaBasicMetricsOverview({
                         >
                           All Synced
                         </button>
-                        {selectedTimeRange === "custom" && (
-                          <span className="px-3 py-1 rounded text-[11.5px] font-semibold bg-slate text-white">
-                            {searchParams.get("from") ? `Custom (${searchParams.get("from")}${searchParams.get("to") ? ` to ${searchParams.get("to")}` : ""})` : "Custom Range"}
-                          </span>
-                        )}
+                        {renderCustomRangePicker()}
                       </div>
                     </div>
 
@@ -1473,11 +1674,7 @@ export function MetaBasicMetricsOverview({
                 >
                   All Time
                 </button>
-                {selectedTimeRange === "custom" && (
-                  <span className="px-3 py-1 rounded text-[11.5px] font-semibold bg-slate text-white">
-                    {searchParams.get("from") ? `Custom (${searchParams.get("from")}${searchParams.get("to") ? ` to ${searchParams.get("to")}` : ""})` : "Custom Range"}
-                  </span>
-                )}
+                {renderCustomRangePicker()}
               </div>
             </div>
 
@@ -1576,8 +1773,8 @@ export function MetaBasicMetricsOverview({
               <div className="font-serif text-[24px] font-semibold text-ink mt-1">
                 ₹{displaySpend.toLocaleString()}
               </div>
-              <div className="text-[11px] text-stone-dark mt-1">
-                {selectedTimeRange === "all" ? "Historical spend" : selectedTimeRange === "90d" ? "Past 90 days" : selectedTimeRange === "7d" ? "Past 7 days" : selectedTimeRange === "custom" && searchParams.get("from") ? `${searchParams.get("from")}${searchParams.get("to") ? ` to ${searchParams.get("to")}` : ""}` : "Past 30 days"}
+              <div className="text-[11px] text-stone-dark mt-1 font-mono">
+                {selectedTimeRange === "all" ? "Historical spend" : selectedTimeRange === "90d" ? "Past 90 days" : selectedTimeRange === "7d" ? "Past 7 days" : selectedTimeRange === "custom" ? (searchParams.get("from") ? `${searchParams.get("from")}${searchParams.get("to") ? ` to ${searchParams.get("to")}` : ""}` : "Custom period") : "Past 30 days"}
               </div>
             </div>
 

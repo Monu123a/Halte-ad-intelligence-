@@ -41,10 +41,14 @@ async function OverviewContent({
   const selectedPlatformFilter = searchParams.platform || "ALL";
   const filter = searchParams.filter;
 
-  const customRange = (range === "custom" && from)
+  const customRange = (range === "custom")
     ? {
-        from: new Date(from.includes("T") ? from : `${from}T00:00:00.000Z`),
-        to: to ? new Date(to.includes("T") ? to : `${to}T23:59:59.999Z`) : new Date(new Date().setHours(23, 59, 59, 999))
+        from: from
+          ? new Date(from.includes("T") ? from : `${from}T00:00:00.000Z`)
+          : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+        to: to
+          ? new Date(to.includes("T") ? to : `${to}T23:59:59.999Z`)
+          : new Date(new Date().setHours(23, 59, 59, 999))
       }
     : undefined;
 

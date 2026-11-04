@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import MonthSelector from "./MonthSelector";
+import { resolveMetaCampaignBrand } from "@/lib/metaBasicMetrics";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,8 @@ async function getBrandData(brandName: string, currentMonthStr: string): Promise
   spendByBrand: Record<string, number>;
   isHalteAll: boolean;
 }> {
-  const cacheKey = `${brandName}_${currentMonthStr}`;
+  const cleanBrandName = decodeURIComponent(brandName).replace(/%20/g, " ").trim();
+  const cacheKey = `${cleanBrandName}_${currentMonthStr}`;
   const now = Date.now();
   const cached = brandReportCache.get(cacheKey);
   if (cached && now < cached.expiresAt) {
@@ -27,9 +29,9 @@ async function getBrandData(brandName: string, currentMonthStr: string): Promise
   const allBrands = await prisma.brand.findMany({
     select: { id: true, name: true, pageId: true, isSeasonal: true, colorToken: true }
   });
-  const normalizedBrandName = decodeURIComponent(brandName).trim().toLowerCase();
-  const isHalteAll = normalizedBrandName === "halte all" || normalizedBrandName === "all";
-  const currentBrand = allBrands.find(b => b.name.toLowerCase() === normalizedBrandName);
+  const normalizedBrandName = cleanBrandName.toLowerCase();
+  const isHalteAll = normalizedBrandName === "halte all" || normalizedBrandName === "all" || normalizedBrandName === "halte-all";
+  const currentBrand = allBrands.find(b => b.name.toLowerCase() === (isHalteAll ? "halte all" : normalizedBrandName));
   const isSeasonal = currentBrand?.isSeasonal || false;
 
   const [year, month] = currentMonthStr.split("-").map(Number);
@@ -40,48 +42,54 @@ async function getBrandData(brandName: string, currentMonthStr: string): Promise
   const spendByRegion: Record<string, number> = {};
   const spendByBrand: Record<string, number> = {};
 
-  if (isHalteAll || currentBrand) {
-    const agg = await prisma.dailyMetric.groupBy({
-      by: ['adSetId'],
-      where: { 
-        ...(isHalteAll ? {} : { adSet: { campaign: { brandPageId: currentBrand?.pageId } } }),
-        date: {
-          gte: startDate,
-          lte: endDate
-        }
-      },
-      _sum: { spend: true }
-    });
+  const agg = await prisma.dailyMetric.groupBy({
+    by: ['adSetId'],
+    where: { 
+      date: {
+        gte: startDate,
+        lte: endDate
+      }
+    },
+    _sum: { spend: true }
+  });
 
-    const adSetIds = agg.map(a => a.adSetId);
-    const adSets = await prisma.adSet.findMany({
-      where: { id: { in: adSetIds } },
-      select: {
-        id: true,
-        campaign: {
-          select: {
-            region: true,
-            brandPageId: true,
-            brand: { select: { name: true } }
-          }
+  const adSetIds = agg.map(a => a.adSetId);
+  const adSets = await prisma.adSet.findMany({
+    where: { id: { in: adSetIds } },
+    select: {
+      id: true,
+      campaign: {
+        select: {
+          name: true,
+          region: true,
+          brandPageId: true,
+          brand: { select: { name: true } }
         }
       }
-    });
-
-    const brandPageMap = new Map(allBrands.map(b => [b.pageId, b.name]));
-    const adSetLookup = new Map(adSets.map(a => [a.id, a]));
-
-    for (const a of agg) {
-      const s = Number(a._sum.spend || 0);
-      totalSpend += s;
-      const adset = adSetLookup.get(a.adSetId);
-      const r = adset?.campaign?.region || "National / All India";
-      spendByRegion[r] = (spendByRegion[r] || 0) + s;
-
-      const rawBrandName = adset?.campaign?.brand?.name || (adset?.campaign?.brandPageId ? brandPageMap.get(adset.campaign.brandPageId) : null) || "Halte (Direct)";
-      const bName = rawBrandName === "Halte All" ? "Halte (Multi-Brand)" : rawBrandName;
-      spendByBrand[bName] = (spendByBrand[bName] || 0) + s;
     }
+  });
+
+  const brandPageMap = new Map(allBrands.map(b => [b.pageId, b.name]));
+  const adSetLookup = new Map(adSets.map(a => [a.id, a]));
+
+  for (const a of agg) {
+    const s = Number(a._sum.spend || 0);
+    const adset = adSetLookup.get(a.adSetId);
+    const cName = adset?.campaign?.name || "";
+    const explicitBrand = adset?.campaign?.brand?.name || (adset?.campaign?.brandPageId ? brandPageMap.get(adset.campaign.brandPageId) : null);
+    const resolvedBrand = resolveMetaCampaignBrand(cName, explicitBrand);
+
+    // If viewing a specific brand (e.g. Gardena, BKR), only include matching campaigns
+    if (!isHalteAll && resolvedBrand.toLowerCase() !== normalizedBrandName) {
+      continue;
+    }
+
+    totalSpend += s;
+    const r = adset?.campaign?.region || "National / All India";
+    spendByRegion[r] = (spendByRegion[r] || 0) + s;
+
+    const bName = resolvedBrand === "Halte All" ? "Halte (Multi-Brand)" : resolvedBrand;
+    spendByBrand[bName] = (spendByBrand[bName] || 0) + s;
   }
 
   const result = { currentBrand, isSeasonal, totalSpend, spendByRegion, spendByBrand, isHalteAll };
@@ -101,7 +109,8 @@ export default async function BrandReportPage({
     redirect("/leads");
   }
 
-  const brandName = decodeURIComponent(params.brandId);
+  const rawBrand = params.brandId;
+  const brandName = decodeURIComponent(rawBrand).replace(/%20/g, " ").trim();
   const currentMonthStr = searchParams.month || new Date().toISOString().substring(0, 7);
   const { currentBrand, isSeasonal, totalSpend, spendByRegion, spendByBrand, isHalteAll } = await getBrandData(brandName, currentMonthStr);
 
@@ -170,7 +179,9 @@ export default async function BrandReportPage({
   }
   
   const getTabClass = (tabName: string) => {
-    const isActive = tabName.toLowerCase() === brandName.toLowerCase();
+    const isActive = isHalteAll 
+      ? (tabName === "Halte All")
+      : (tabName.toLowerCase() === brandName.toLowerCase());
     const base = "text-[13px] font-semibold py-[9px] px-[18px] border border-stone cursor-pointer transition-colors rounded-sm";
     
     if (!isActive) return `${base} bg-card text-ink-soft hover:bg-stone/20`;
@@ -191,7 +202,7 @@ export default async function BrandReportPage({
           <h1 className="font-serif text-[30px] m-0 mb-1 font-semibold">Brand Report</h1>
           <p className="m-0 text-[13.5px] text-ink-soft">Season and region view</p>
         </div>
-        <MonthSelector currentMonth={currentMonthStr} brandId={brandName} />
+        <MonthSelector currentMonth={currentMonthStr} brandId={isHalteAll ? "Halte All" : brandName} />
       </div>
 
       <div className="flex flex-wrap gap-2.5 mb-7">
@@ -199,7 +210,7 @@ export default async function BrandReportPage({
         <Link href={`/brand/BKR?month=${currentMonthStr}`} className={getTabClass("BKR")}>BKR</Link>
         <Link href={`/brand/Gorilla?month=${currentMonthStr}`} className={getTabClass("Gorilla")}>Gorilla</Link>
         <Link href={`/brand/Velcro?month=${currentMonthStr}`} className={getTabClass("Velcro")}>Velcro</Link>
-        <Link href={`/brand/Halte%20All?month=${currentMonthStr}`} className={getTabClass("Halte All")}>Halte All</Link>
+        <Link href={`/brand/Halte All?month=${currentMonthStr}`} className={getTabClass("Halte All")}>Halte All</Link>
       </div>
 
 
