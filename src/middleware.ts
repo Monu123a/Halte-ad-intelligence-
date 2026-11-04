@@ -35,11 +35,12 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  // Allow auth, webhook, and cron API routes
+  // Allow auth, webhook, sync, and cron API routes
   if (
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/webhooks") ||
-    pathname.startsWith("/api/cron")
+    pathname.startsWith("/api/cron") ||
+    pathname.startsWith("/api/sync")
   ) {
     return NextResponse.next();
   }
