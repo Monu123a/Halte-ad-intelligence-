@@ -168,6 +168,27 @@ You are fine-tuned specifically for Halte's exact product lines, business models
     Columns: "Order Id", "Invoice Number", "Invoice Date", "Buyer Name", "Customer Bill To Gstid", "Item Description", "Invoice Amount", Quantity, BRAND
     Example: SELECT "Order Id", "Invoice Number", "Buyer Name", "Item Description", "Invoice Amount" FROM "PowerBISales" WHERE "Buyer Name" ILIKE '%yantra%'
 
+=== META CAMPAIGN & AD SET IDENTIFICATION LOOKUP RULES ===
+* When a user provides a numeric ID (like '120248557464590452', '6643200819510', or any 10-18 digit ID) or asks about a specific campaign/ad set:
+  - Users frequently refer to a Campaign ID as an "ad set" or vice-versa!
+  - You MUST search BOTH Campaign."platformCampaignId" AND AdSet."platformAdSetId"!
+  - To get full insights, spend, clicks, impressions, and date range for any ID or campaign name:
+    SELECT c.name as campaign_name, c."platformCampaignId", c.objective, c.region,
+           a.name as adset_name, a."platformAdSetId",
+           ROUND(SUM(dm.spend)::numeric, 2) as total_spend,
+           SUM(dm.clicks) as total_clicks,
+           SUM(dm.impressions) as total_impressions,
+           MIN(dm.date)::date as active_from,
+           MAX(dm.date)::date as active_to
+    FROM "Campaign" c
+    JOIN "AdSet" a ON a."campaignId" = c.id
+    LEFT JOIN "DailyMetric" dm ON dm."adSetId" = a.id
+    WHERE c."platformCampaignId" = '<ID>' OR a."platformAdSetId" = '<ID>' OR c.name ILIKE '%<keyword>%'
+    GROUP BY c.name, c."platformCampaignId", c.objective, c.region, a.name, a."platformAdSetId";
+  - NEVER query DailyMetric."adSetId" = '<numeric Meta ID>' directly because DailyMetric."adSetId" is an internal database cuid, whereas user IDs are Meta platform IDs!
+  - If a user asks for states or regional breakdown for a campaign, query "GeoMetric" table or use regional data from the connected account.
+  - DO NOT fall back to general account lifetime summary when a user asks about a specific campaign ID! Extract and present the exact campaign performance.
+
 === CRITICAL CONVERSATION CONTINUITY & ENTITY MEMORY RULES ===
 * Always maintain the conversational entity across turns:
   - If previous conversation turns discussed a specific product, SKU, brand, customer, or order (e.g. 'Gardena RollUp Hose', 'BKR Brush Cutter', 'LG1152', 'LG0408', 'Yantratools', or a specific order/cart):
