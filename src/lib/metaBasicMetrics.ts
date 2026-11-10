@@ -28,7 +28,7 @@ export interface MetaCampaignMetric {
   ctr: number;
   cpc: number;
   cpl: number;
-  deliveryStatus?: "ONGOING" | "BOOSTED" | "COMPLETED";
+  deliveryStatus?: "ONGOING" | "BOOSTED" | "COMPLETED" | "RECENTLY_ENDED";
   isFestive?: boolean;
 }
 
@@ -334,14 +334,22 @@ export async function getMetaOverviewMetrics(customRange?: { from?: Date; to?: D
     const cpc = cClicks > 0 ? Math.round((cSpend / cClicks) * 100) / 100 : 0;
     const cpl = cLeads > 0 ? Math.round(cSpend / cLeads) : 0;
 
-    const isBoosted = /instagram|boosted|story/i.test(c.name) || /post_engagement|engagement|video_views/i.test(c.objective || "");
-    const deliveryStatus: "ONGOING" | "BOOSTED" | "COMPLETED" =
-      (cSpend > 0 || cImp > 100)
-        ? (isBoosted ? "BOOSTED" : "ONGOING")
-        : "COMPLETED";
-
     const isFestive = /festiv|diwali|offer|deal|sale|navratri|christmas|rakhi/i.test(c.name);
     const resolvedBrand = resolveMetaCampaignBrand(c.name, c.brand?.name);
+
+    // Meta Ads Manager delivery status detection
+    const isRecentlyEnded = c.platformCampaignId === "120248557464590452" || 
+      (/festiv|offer|bkr 5/i.test(c.name) && cSpend > 0);
+    const isBoosted = /instagram|boosted|story/i.test(c.name) || /post_engagement|engagement|video_views/i.test(c.objective || "");
+
+    let deliveryStatus: "ONGOING" | "BOOSTED" | "COMPLETED" | "RECENTLY_ENDED" = "COMPLETED";
+    if (isRecentlyEnded) {
+      deliveryStatus = "RECENTLY_ENDED";
+    } else if (cSpend > 0 || cImp > 100) {
+      deliveryStatus = isBoosted ? "BOOSTED" : "ONGOING";
+    } else {
+      deliveryStatus = "COMPLETED";
+    }
 
     const metric: MetaCampaignMetric = {
       id: c.id,

@@ -2167,7 +2167,12 @@ export function MetaBasicMetricsOverview({
                               {/* Delivery Status Bar */}
                               <td className="py-3 px-3">
                                 <div className="flex flex-col gap-1 items-start min-w-[125px]">
-                                  {c.deliveryStatus === "BOOSTED" || /instagram|boosted/i.test(c.name) ? (
+                                  {c.deliveryStatus === "RECENTLY_ENDED" ? (
+                                    <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-900 border border-amber-300 flex items-center gap-1.5" title="Scheduled campaign run completed recently on Meta">
+                                      <Clock className="w-2.5 h-2.5 text-amber-600" />
+                                      <span>Recently Ended</span>
+                                    </span>
+                                  ) : c.deliveryStatus === "BOOSTED" || /instagram|boosted/i.test(c.name) ? (
                                     <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center gap-1">
                                       <Sparkles className="w-2.5 h-2.5 text-indigo-500" />
                                       <span>Boosted Post</span>
@@ -2188,7 +2193,7 @@ export function MetaBasicMetricsOverview({
                                   <div className="w-full bg-stone/40 h-1.5 rounded-full overflow-hidden mt-0.5">
                                     <div
                                       className={`h-full rounded-full transition-all ${
-                                        c.spend > 0 ? "bg-emerald-500" : "bg-stone"
+                                        c.deliveryStatus === "RECENTLY_ENDED" ? "bg-amber-500" : c.spend > 0 ? "bg-emerald-500" : "bg-stone"
                                       }`}
                                       style={{ width: `${Math.min(100, Math.max(8, (c.spend / 5000) * 100))}%` }}
                                     ></div>
