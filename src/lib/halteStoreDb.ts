@@ -204,6 +204,14 @@ export async function runSafeStoreQuery(sql: string): Promise<any[]> {
     });
   }
 
+  // 5. Auto-correct brand filtering on 'orders' table (orders table has NO 'brand' column, brands are mapped by SKU)
+  clean = clean.replace(/\bbrand\s*=\s*'BKR'/gi, "(sku ILIKE '%BKR%' OR sku ILIKE '%LG%' OR sku ILIKE '%CA%' OR sku ILIKE '%HM%')");
+  clean = clean.replace(/\bbrand\s+ILIKE\s*'%BKR%'/gi, "(sku ILIKE '%BKR%' OR sku ILIKE '%LG%' OR sku ILIKE '%CA%' OR sku ILIKE '%HM%')");
+  clean = clean.replace(/\bbrand\s*=\s*'Gardena'/gi, "(sku ILIKE '%LG0%' OR sku ILIKE '%Gardena%')");
+  clean = clean.replace(/\bbrand\s+ILIKE\s*'%Gardena%'/gi, "(sku ILIKE '%LG0%' OR sku ILIKE '%Gardena%')");
+  clean = clean.replace(/\bbrand\s*=\s*'Gorilla'/gi, "(sku ILIKE '%Gorilla%' OR sku ILIKE '%HM07%')");
+  clean = clean.replace(/\bbrand\s*=\s*'Velcro'/gi, "(sku ILIKE '%Velcro%')");
+
   // Ensure query has a limit to prevent memory spikes
   const cappedSql = clean.toLowerCase().includes("limit") ? clean : `${clean} LIMIT 50`;
   const res = await p.query(cappedSql);

@@ -13,11 +13,17 @@ export const maxDuration = 60;
 
 function extractGeminiText(candidate: any): string {
   if (!candidate?.content?.parts) return "";
-  const textParts = candidate.content.parts
+  let text = candidate.content.parts
     .filter((p: any) => typeof p.text === "string" && !p.thought)
-    .map((p: any) => p.text);
-  if (textParts.length > 0) return textParts.join("\n").trim();
-  return candidate.content.parts.map((p: any) => p.text || "").join("").trim();
+    .map((p: any) => p.text)
+    .join("\n")
+    .trim();
+
+  // Strip accidental tool payload reflections
+  text = text.replace(/\{"query_(?:ads_and_telemetry|store)_database_response":\s*\{[\s\S]*?\}\}\s*/gi, "").trim();
+  text = text.replace(/```json\s*\{"query_(?:ads_and_telemetry|store)_database_response"[\s\S]*?\}\s*```/gi, "").trim();
+
+  return text;
 }
 
 function formatRowsToMarkdown(rows: any[]): string {
@@ -33,7 +39,27 @@ function formatRowsToMarkdown(rows: any[]): string {
 }
 
 async function runSafeAdsQuery(sql: string): Promise<any[]> {
-  const clean = sql.trim().replace(/;+$/, "");
+  let clean = sql.trim().replace(/;+$/, "");
+
+  // Auto-correct common LLM SQL syntax mistakes on Postgres arrays & JSON
+  clean = clean.replace(/\bproducts\s+ilike\b/gi, "array_to_string(products, ',') ILIKE");
+  clean = clean.replace(/\bproducts\s*~~\*\s*'([^']+)'/gi, "array_to_string(products, ',') ILIKE '$1'");
+  clean = clean.replace(/\bitems->>'brand'\s*=\s*'([^']+)'/gi, "CAST(items AS TEXT) ILIKE '%$1%'");
+  clean = clean.replace(/\bitems->>'brand'\s+ilike\s*'([^']+)'/gi, "CAST(items AS TEXT) ILIKE '$1'");
+
+  // Ensure double quotes for case-sensitive Prisma table names if unquoted
+  clean = clean.replace(/\bfrom\s+AbandonedCart\b/gi, 'FROM "AbandonedCart"');
+  clean = clean.replace(/\bfrom\s+Campaign\b/gi, 'FROM "Campaign"');
+  clean = clean.replace(/\bjoin\s+Campaign\b/gi, 'JOIN "Campaign"');
+  clean = clean.replace(/\bfrom\s+AdSet\b/gi, 'FROM "AdSet"');
+  clean = clean.replace(/\bjoin\s+AdSet\b/gi, 'JOIN "AdSet"');
+  clean = clean.replace(/\bfrom\s+DailyMetric\b/gi, 'FROM "DailyMetric"');
+  clean = clean.replace(/\bjoin\s+DailyMetric\b/gi, 'JOIN "DailyMetric"');
+  clean = clean.replace(/\bfrom\s+GeoMetric\b/gi, 'FROM "GeoMetric"');
+  clean = clean.replace(/\bjoin\s+GeoMetric\b/gi, 'JOIN "GeoMetric"');
+  clean = clean.replace(/\bfrom\s+Lead\b/gi, 'FROM "Lead"');
+  clean = clean.replace(/\bjoin\s+Lead\b/gi, 'JOIN "Lead"');
+
   const lower = clean.toLowerCase();
   if (!lower.startsWith("select") && !lower.startsWith("with")) {
     throw new Error("Only read-only SELECT queries are permitted.");
@@ -188,6 +214,45 @@ You are fine-tuned specifically for Halte's exact product lines, business models
   - NEVER query DailyMetric."adSetId" = '<numeric Meta ID>' directly because DailyMetric."adSetId" is an internal database cuid, whereas user IDs are Meta platform IDs!
   - If a user asks for states or regional breakdown for a campaign, query "GeoMetric" table or use regional data from the connected account.
   - DO NOT fall back to general account lifetime summary when a user asks about a specific campaign ID! Extract and present the exact campaign performance.
+
+=== POSTGRESQL & JSONB SCHEMA CRITICAL QUERIES ===
+* In "Campaign" table:
+  - 'products' column is a PostgreSQL array (text[]).
+  - NEVER use products ILIKE '%...%'! (This causes Postgres error 42883 operator does not exist: text[] ~~* unknown).
+  - To filter by product or brand, use:
+    c.name ILIKE '%BKR%' OR array_to_string(c.products, ',') ILIKE '%BKR%'
+  - Example to compare BKR campaigns on spend, CTR, CPC, and reach:
+    SELECT c.name, ROUND(SUM(dm.spend)::numeric, 2) as spend, SUM(dm.impressions) as impressions, SUM(dm.clicks) as clicks,
+           ROUND((SUM(dm.clicks)::numeric / NULLIF(SUM(dm.impressions), 0) * 100)::numeric, 2) as ctr_pct,
+           ROUND((SUM(dm.spend)::numeric / NULLIF(SUM(dm.clicks), 0))::numeric, 2) as cpc
+    FROM "Campaign" c
+    JOIN "AdSet" a ON a."campaignId" = c.id
+    JOIN "DailyMetric" dm ON dm."adSetId" = a.id
+    WHERE (c.name ILIKE '%BKR%' OR array_to_string(c.products, ',') ILIKE '%BKR%')
+      AND dm.date >= '2026-10-01'
+    GROUP BY c.name
+    ORDER BY spend DESC;
+
+* In "AbandonedCart" table:
+  - 'items' column is a JSON array: [{ sku, name, brand, price, quantity }]
+  - There is NO 'brand' column on "AbandonedCart"!
+  - To filter by brand (e.g. BKR, Gardena, Velcro, Gorilla), ALWAYS use:
+    CAST(items AS TEXT) ILIKE '%BKR%'
+  - Example:
+    SELECT COUNT(*) as cart_count, SUM(CAST("cartValue" AS NUMERIC)) as total_val
+    FROM "AbandonedCart"
+    WHERE CAST(items AS TEXT) ILIKE '%BKR%'
+      AND "cartUpdatedAt"::date >= '2026-10-27' AND "cartUpdatedAt"::date <= '2026-11-10';
+
+* In 'orders' table (Halte Production Store DB):
+  - There is NO 'brand' column on 'orders'!
+  - BKR SKUs start with 'BKR', 'LG', 'CA' (Snow chains), or 'HM' (Generators/Machinery).
+  - Gardena SKUs start with 'LG0' or have Gardena in description / cogs.
+  - To query BKR orders:
+    SELECT COUNT(*) as orders_count, SUM(item_price * quantity) as total_revenue
+    FROM orders
+    WHERE purchase_date::date >= '2026-10-27' AND purchase_date::date <= '2026-11-10'
+      AND (sku ILIKE '%BKR%' OR sku ILIKE '%LG%' OR sku ILIKE '%CA%' OR sku ILIKE '%HM%');
 
 === CRITICAL CONVERSATION CONTINUITY & ENTITY MEMORY RULES ===
 * Always maintain the conversational entity across turns:
